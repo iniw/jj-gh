@@ -123,9 +123,8 @@ pub async fn run(model: &impl Model, args: &PrLogArgs) -> Result<()> {
     } = args;
 
     let spinner = Spinner::start("Resolving local PRs");
-    let local = model
-        .local_pulls(remote.as_ref(), Some(upstream_remote))
-        .await?;
+    let upstream_remote = crate::gh::remote::resolved_upstream_remote(upstream_remote);
+    let local = model.local_pulls(remote, Some(upstream_remote)).await?;
     let branch_to_local = local
         .bookmarks
         .iter()

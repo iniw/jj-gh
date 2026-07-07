@@ -177,9 +177,8 @@ pub async fn run(model: &impl Model, args: &CreateArgs) -> Result<()> {
         title_template,
     } = args;
 
-    let (remote, target) = model
-        .resolve_target(remote.as_ref(), Some(upstream_remote))
-        .await?;
+    let upstream_remote = crate::gh::remote::resolved_upstream_remote(upstream_remote);
+    let (remote, target) = model.resolve_target(remote, Some(upstream_remote)).await?;
     let info = jj.resolve_rev(rev).await?;
     let existing_branch = info.bookmarks.first().cloned();
 

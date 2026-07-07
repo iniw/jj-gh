@@ -33,8 +33,9 @@ pub async fn run(model: &impl Model, args: &AutoMergeArgs) -> Result<()> {
             },
     } = args;
 
+    let upstream_remote = crate::gh::remote::resolved_upstream_remote(upstream_remote);
     let pr = model
-        .resolve_pr(remote.as_ref(), upstream_remote, number_or_rev)
+        .resolve_pr(remote, upstream_remote, number_or_rev)
         .await?;
 
     if pr.in_merge_queue {

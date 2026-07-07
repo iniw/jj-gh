@@ -6,6 +6,7 @@
 
 use super::{CommitInfo, Jj, PushedBookmark, jj_argv};
 use anyhow::{Context, Result, anyhow};
+use gix::bstr::ByteSlice;
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
 
@@ -50,13 +51,22 @@ impl JjCli {
 }
 
 impl Jj for JjCli {
-    async fn default_remote(&self) -> Result<String> {
-        self.repo
+    async fn default_remote(&self) -> Result<Option<String>> {
+        Ok(self
+            .repo
             .find_default_remote(gix::remote::Direction::Push)
             .transpose()
             .context("resolving default remote for repository")?
-            .and_then(|remote| remote.name().map(|remote| remote.as_ref().to_string()))
-            .context("resolving default remote for repository")
+            .and_then(|remote| remote.name().map(|remote| remote.as_ref().to_string())))
+    }
+
+    async fn remote_names(&self) -> Result<Vec<String>> {
+        Ok(self
+            .repo
+            .remote_names()
+            .into_iter()
+            .map(|name| name.to_str_lossy().into_owned())
+            .collect())
     }
 
     async fn resolve_rev(&self, rev: &str) -> Result<CommitInfo> {

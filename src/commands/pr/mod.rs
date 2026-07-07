@@ -496,10 +496,10 @@ mod tests {
         assert_eq!(c.auto_merge_method, AutoMergeMethod::Squash);
     }
 
-    #[test]
-    #[expect(deprecated)]
-    fn global_remote_overrides_default_remote_config() {
-        use crate::cli::GlobalOptsInput;
+    /// Build the resolved [`GlobalOpts`] from CLI args plus a config layer that
+    /// sets both remote keys. Shared by the two precedence tests below.
+    fn resolve_globals(cli: &[&str]) -> crate::cli::GlobalOpts {
+        use crate::cli::{GlobalOpts, GlobalOptsInput};
         use clap::Parser;
 
         #[derive(clap::Parser, Debug)]
@@ -509,10 +509,7 @@ mod tests {
             opts: GlobalOptsInput,
         }
 
-        let global =
-            GlobalParser::try_parse_from(["--remote", "fork", "--upstream-remote", "canonical"])
-                .unwrap()
-                .opts;
+        let global = GlobalParser::try_parse_from(cli).unwrap().opts;
         let fig = config::defaults_figment()
             .merge(config::JjConfProvider::from_memory(
                 "test",
@@ -524,38 +521,41 @@ mod tests {
             ))
             .merge(Serialized::defaults(&global));
         let c = config::extract(&fig).unwrap();
-        assert_eq!(c.default_remote, Some("fork".to_string()));
-        assert_eq!(c.upstream_remote, "canonical");
+        GlobalOpts::resolve(global, &c)
     }
 
     #[test]
-    #[expect(deprecated)]
+    fn global_remote_flag_outranks_config_fallback() {
+        // The CLI flag is the `.cli` override; the config value is the
+        // fallback. They sit at opposite ends of the precedence chain, so the
+        // flag no longer merges into the config key.
+        let globals = resolve_globals(&["--remote", "fork", "--upstream-remote", "canonical"]);
+        assert_eq!(globals.remote.cli().map(String::as_str), Some("fork"));
+        assert_eq!(
+            globals.remote.fallback().map(String::as_str),
+            Some("cfg-origin")
+        );
+        assert_eq!(
+            globals.remote.or_fallback().map(String::as_str),
+            Some("fork")
+        );
+        assert_eq!(
+            globals.upstream_remote.or_fallback().map(String::as_str),
+            Some("canonical")
+        );
+    }
+
+    #[test]
     fn config_remote_used_when_global_not_set() {
-        use crate::cli::GlobalOptsInput;
-        use clap::Parser;
-
-        #[derive(clap::Parser, Debug)]
-        #[command(no_binary_name = true)]
-        struct GlobalParser {
-            #[command(flatten)]
-            opts: GlobalOptsInput,
-        }
-
-        let global = GlobalParser::try_parse_from::<[&str; 0], _>([])
-            .unwrap()
-            .opts;
-        let fig = config::defaults_figment()
-            .merge(config::JjConfProvider::from_memory(
-                "test",
-                r#"
-                [jj-gh]
-                default_remote = "cfg-origin"
-                upstream_remote = "cfg-upstream"
-                "#,
-            ))
-            .merge(Serialized::defaults(&global));
-        let c = config::extract(&fig).unwrap();
-        assert_eq!(c.default_remote, Some("cfg-origin".to_string()));
-        assert_eq!(c.upstream_remote, "cfg-upstream");
+        let globals = resolve_globals(&[]);
+        assert_eq!(globals.remote.cli(), None);
+        assert_eq!(
+            globals.remote.or_fallback().map(String::as_str),
+            Some("cfg-origin")
+        );
+        assert_eq!(
+            globals.upstream_remote.or_fallback().map(String::as_str),
+            Some("cfg-upstream")
+        );
     }
 }

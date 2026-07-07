@@ -66,10 +66,11 @@ async fn run_with(
                 askpass_timeout_secs: _,
             },
     } = args;
+    let upstream_remote = crate::gh::remote::resolved_upstream_remote(upstream_remote);
 
     if let Some(number_or_rev) = number_or_rev {
         let (pr, target) = model
-            .resolve_pr_with_target(remote.as_ref(), upstream_remote, number_or_rev)
+            .resolve_pr_with_target(remote, upstream_remote, number_or_rev)
             .await?;
         retry_pr(
             gh,
@@ -85,9 +86,7 @@ async fn run_with(
         .await?;
         Ok(())
     } else if *all {
-        let local = model
-            .local_pulls(remote.as_ref(), Some(upstream_remote))
-            .await?;
+        let local = model.local_pulls(remote, Some(upstream_remote)).await?;
         let prs = local
             .prs
             .into_iter()
@@ -376,8 +375,12 @@ mod tests {
     }
 
     impl crate::jj::Jj for FakeJj {
-        async fn default_remote(&self) -> Result<String> {
-            Ok("origin".into())
+        async fn default_remote(&self) -> Result<Option<String>> {
+            Ok(Some("origin".into()))
+        }
+
+        async fn remote_names(&self) -> Result<Vec<String>> {
+            Ok(vec!["origin".into()])
         }
 
         async fn resolve_rev(&self, _rev: &str) -> Result<CommitInfo> {
@@ -569,8 +572,8 @@ mod tests {
                 verbose: 0,
                 quiet: false,
                 log_level: None,
-                remote: Some("origin".into()),
-                upstream_remote: "upstream".into(),
+                remote: crate::util::EvalWithCfgFallback::new(Some("origin".into()), None),
+                upstream_remote: crate::util::EvalWithCfgFallback::new(None, None),
                 gh_askpass: None,
                 askpass_timeout_secs: 20,
             },
