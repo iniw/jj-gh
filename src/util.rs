@@ -73,6 +73,26 @@ impl<T: Clone> EvalWithCfgFallback<T> {
         Self { cli, fallback }
     }
 
+    /// The CLI override, if the flag was passed.
+    #[must_use]
+    pub fn cli(&self) -> Option<&T> {
+        self.cli.as_ref()
+    }
+
+    /// The config fallback, if set.
+    #[must_use]
+    pub fn fallback(&self) -> Option<&T> {
+        self.fallback.as_ref()
+    }
+
+    /// CLI override if the flag was passed, else the config fallback. Skips the
+    /// auto-detect layer entirely; use for fields whose fallback always carries
+    /// a default so there is nothing to auto-detect.
+    #[must_use]
+    pub fn or_fallback(&self) -> Option<&T> {
+        self.cli.as_ref().or(self.fallback.as_ref())
+    }
+
     /// Resolve CLI first, then the closure result, then the config fallback.
     /// The closure is only awaited when CLI is `None`. Returns `None` if every
     /// source is empty.

@@ -2,9 +2,9 @@
 //!
 //! Values come from (low to high priority):
 //! 1. Built-in defaults via [`Config::default`].
-//! 2. jj user config (`jj config path --user`).
-//! 3. jj repo config (`jj config path --repo`).
-//! 4. jj workspace config (`jj config path --workspace`).
+//! 2. jj user config (`jj config list --user jj-gh`).
+//! 3. jj repo config (`jj config list --repo jj-gh`).
+//! 4. jj workspace config (`jj config list --workspace jj-gh`).
 //! 5. File pointed to by `$JJ_GH_EXTRA_CONFIG`.
 //! 6. Env overlay (`JJ_GH_TEMPLATE`, `JJ_GH_TEMPLATE_FILE`).
 //!
@@ -12,9 +12,11 @@
 //! `gh_token`) and the editor env (`$VISUAL`/`$EDITOR`) are resolved outside
 //! this figment stack, in [`crate::auth`] and [`crate::editor`] respectively.
 //!
-//! Layer paths come from `jj config path --<level>` so we track whatever
-//! storage layout jj uses (XDG dirs in 0.41+, legacy `.jj/repo/config.toml`
-//! before that). Each file source reads from its `[jj-gh]` subtree via
+//! We ask jj for the merged `jj-gh` subtree per scope via
+//! `jj config list --<level> jj-gh` rather than reading config files
+//! ourselves. This tracks whatever layering jj applies (XDG dirs, `conf.d`
+//! include dirs, `--config` overrides, extensions) instead of reimplementing
+//! its discovery rules. Each scope's dotted-key TOML output feeds
 //! [`JjConfProvider`].
 //!
 //! `pr_create_template` / `pr_create_template_file` are also exposed via
@@ -54,12 +56,16 @@ config_schema! {
     /// option is not set, an error will occur.
     default_base_branch: Option<String> = None,
 
-    /// Git remote used for the user's own pushes and PR head lookups.
-    #[deprecated(since = "0.2.5", note = "jj-gh now auto-detects the default remote via the repository data.")]
+    /// Fallback git remote for the user's own pushes and PR head lookups.
+    /// Used only when the repository's default remote cannot be auto-resolved;
+    /// the `--remote` flag and git's own default-remote detection both take
+    /// precedence over this.
     default_remote: Option<String> = None,
 
-    /// Git remote used as the PR target in fork workflows.
-    upstream_remote: String = "upstream".into(),
+    /// Git remote used as the PR target in fork workflows. When unset,
+    /// commands that need a target fall back to
+    /// [`crate::gh::remote::DEFAULT_UPSTREAM_REMOTE`].
+    upstream_remote: Option<String> = None,
 
     /// Path to a markdown template file used as the PR body.
     #[env("JJ_GH_TEMPLATE_FILE", path)]
@@ -120,9 +126,13 @@ pub enum AutoMergeMethod {
 /// calling [`extract`].
 #[must_use]
 pub fn load_figment() -> Figment {
-    let mut fig = defaults_figment();
-    for path in discover_layers() {
-        fig = fig.merge(JjConfProvider::from_file(path));
+    // A single unscoped `jj config list jj-gh` returns the fully merged
+    // subtree (user < repo < workspace, plus conf.d and `--config`), so the
+    // main config path needs just one jj subprocess. The scoped queries below
+    // exist only for the per-layer template split.
+    let mut fig = defaults_figment().merge(jj_config_provider(None));
+    if let Some(p) = std::env::var_os("JJ_GH_EXTRA_CONFIG") {
+        fig = fig.merge(JjConfProvider::from_file(PathBuf::from(p)));
     }
     fig.merge(Serialized::defaults(env_overlay()))
 }
@@ -154,7 +164,7 @@ pub struct LayerTemplate {
 ///
 /// Returns an error if a layer's TOML cannot be parsed.
 pub fn user_layer_template() -> Result<LayerTemplate> {
-    extract_layer_template(&user_layer_paths())
+    extract_layer_template(vec![jj_config_provider(Some("--user"))])
 }
 
 /// Extract the PR-body template values defined in repo, workspace, or
@@ -165,13 +175,20 @@ pub fn user_layer_template() -> Result<LayerTemplate> {
 ///
 /// Returns an error if a layer's TOML cannot be parsed.
 pub fn repo_layer_template() -> Result<LayerTemplate> {
-    extract_layer_template(&repo_layer_paths())
+    let mut providers = vec![
+        jj_config_provider(Some("--repo")),
+        jj_config_provider(Some("--workspace")),
+    ];
+    if let Some(p) = std::env::var_os("JJ_GH_EXTRA_CONFIG") {
+        providers.push(JjConfProvider::from_file(PathBuf::from(p)));
+    }
+    extract_layer_template(providers)
 }
 
-fn extract_layer_template(paths: &[PathBuf]) -> Result<LayerTemplate> {
+fn extract_layer_template(providers: Vec<JjConfProvider>) -> Result<LayerTemplate> {
     let mut fig = Figment::from(Serialized::defaults(LayerTemplate::default()));
-    for path in paths {
-        fig = fig.merge(JjConfProvider::from_file(path.clone()));
+    for provider in providers {
+        fig = fig.merge(provider);
     }
     fig.extract::<LayerTemplate>().map_err(Into::into)
 }
@@ -197,65 +214,39 @@ pub fn resolve(overrides: &impl Serialize) -> Result<Config> {
     extract(&fig)
 }
 
-fn discover_layers() -> Vec<PathBuf> {
-    // The three `jj config path` calls are independent cold subprocess spawns;
-    // run them concurrently so startup pays one spawn's latency, not three.
-    // Order (user, repo, workspace) is load-bearing: later layers override
-    // earlier, and `JJ_GH_EXTRA_CONFIG` sits highest.
-    let outputs = crate::proc::capture_sync_batch(&[
-        ["jj", "config", "path", "--user"].as_slice(),
-        ["jj", "config", "path", "--repo"].as_slice(),
-        ["jj", "config", "path", "--workspace"].as_slice(),
-    ]);
-    let mut out = outputs
-        .iter()
-        .filter_map(|o| parse_config_path(o.as_deref()))
-        .collect::<Vec<PathBuf>>();
-    if let Some(p) = std::env::var_os("JJ_GH_EXTRA_CONFIG") {
-        out.push(PathBuf::from(p));
-    }
-    out
+/// Query jj for the `jj-gh` subtree at a single scope (`None` = merged across
+/// all scopes). Returns a provider that contributes nothing when the command
+/// fails or the scope is unavailable (e.g. `--repo` outside any repo).
+fn jj_config_provider(scope: Option<&str>) -> JjConfProvider {
+    let mut argv = vec!["jj", "config", "list"];
+    argv.extend(scope);
+    argv.push("jj-gh");
+    let out = crate::proc::capture_sync(&argv);
+    JjConfProvider::from_jj(scope_label(scope), stdout_to_string(out))
 }
 
-fn user_layer_paths() -> Vec<PathBuf> {
-    jj_config_path("--user").into_iter().collect()
+fn scope_label(scope: Option<&str>) -> String {
+    match scope {
+        Some(s) => format!("jj config list {s} jj-gh"),
+        None => "jj config list jj-gh".into(),
+    }
 }
 
-fn repo_layer_paths() -> Vec<PathBuf> {
-    let mut out = Vec::new();
-    for level in ["--repo", "--workspace"] {
-        if let Some(p) = jj_config_path(level) {
-            out.push(p);
-        }
-    }
-    if let Some(p) = std::env::var_os("JJ_GH_EXTRA_CONFIG") {
-        out.push(PathBuf::from(p));
-    }
-    out
-}
-
-/// Ask jj for one of its config-file paths. Returns `None` when jj is missing,
-/// the layer is unavailable (e.g. `--repo` outside any repo), or jj prints an
-/// empty path.
-fn jj_config_path(level: &str) -> Option<PathBuf> {
-    let stdout = crate::proc::capture_sync(&["jj", "config", "path", level])?;
-    parse_config_path(Some(&stdout))
-}
-
-/// Parse a `jj config path` stdout into a layer path. `None` when the command
-/// failed (no stdout) or jj printed an empty path.
-fn parse_config_path(stdout: Option<&[u8]>) -> Option<PathBuf> {
-    let s = std::str::from_utf8(stdout?).ok()?.trim();
-    if s.is_empty() {
-        return None;
-    }
-    Some(PathBuf::from(s))
+fn stdout_to_string(out: Option<Vec<u8>>) -> Option<String> {
+    out.and_then(|bytes| String::from_utf8(bytes).ok())
 }
 
 /// Source for a [`JjToolsProvider`].
 enum TomlSource {
     /// Read from a file on disk. Missing files contribute no values.
     File(PathBuf),
+    /// Pre-captured `jj config list` stdout (dotted-key TOML) for one scope.
+    /// `contents` is `None` when the command failed or the scope was
+    /// unavailable, in which case the source contributes no values.
+    Jj {
+        label: String,
+        contents: Option<String>,
+    },
     /// In-memory TOML, labelled by source name. Test-only.
     #[cfg(test)]
     Memory { name: String, contents: String },
@@ -274,6 +265,13 @@ impl JjConfProvider {
     pub fn from_file(path: impl Into<PathBuf>) -> Self {
         Self {
             source: TomlSource::File(path.into()),
+        }
+    }
+
+    #[must_use]
+    fn from_jj(label: String, contents: Option<String>) -> Self {
+        Self {
+            source: TomlSource::Jj { label, contents },
         }
     }
 
@@ -301,6 +299,7 @@ impl JjConfProvider {
                 Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
                 Err(e) => Err(SourceError::Io(e.to_string())),
             },
+            TomlSource::Jj { contents, .. } => Ok(contents.clone()),
             #[cfg(test)]
             TomlSource::Memory { contents, .. } => Ok(Some(contents.clone())),
             #[cfg(test)]
@@ -311,6 +310,7 @@ impl JjConfProvider {
     fn source_label(&self) -> String {
         match &self.source {
             TomlSource::File(path) => path.display().to_string(),
+            TomlSource::Jj { label, .. } => format!("<{label}>"),
             #[cfg(test)]
             TomlSource::Memory { name, .. } => format!("<memory:{name}>"),
             #[cfg(test)]
@@ -388,13 +388,10 @@ mod tests {
     }
 
     #[test]
-    fn deprecated_config_keys_include_generated_messages() {
-        assert_eq!(
-            __DEPRECATED_CONFIG_KEYS,
-            &[(
-                "default_remote",
-                "`jj-gh.default_remote` is deprecated since 0.2.5: jj-gh now auto-detects the default remote via the repository data."
-            )]
+    fn no_deprecated_config_keys() {
+        assert!(
+            __DEPRECATED_CONFIG_KEYS.is_empty(),
+            "no config keys are currently deprecated"
         );
     }
 

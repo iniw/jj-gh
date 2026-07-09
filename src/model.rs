@@ -17,6 +17,7 @@ use crate::{
     },
     git::real::{GitOps, RealGit},
     jj::{Jj, JjExt, PushedBookmark, real::JjCli},
+    util::EvalWithCfgFallback,
 };
 use anyhow::{Result, anyhow};
 use std::rc::Rc;
@@ -39,7 +40,7 @@ pub trait Model {
     /// head belongs to that push remote owner and matches a tracked bookmark.
     async fn local_pulls(
         &self,
-        remote: Option<&String>,
+        remote: &EvalWithCfgFallback<String>,
         upstream_remote: Option<&str>,
     ) -> Result<LocalPulls> {
         let (remote, target) = self.resolve_target(remote, upstream_remote).await?;
@@ -62,7 +63,7 @@ pub trait Model {
 
     async fn resolve_pr(
         &self,
-        remote: Option<&String>,
+        remote: &EvalWithCfgFallback<String>,
         upstream_remote: &str,
         number_or_rev: &str,
     ) -> Result<PrDetails> {
@@ -79,7 +80,7 @@ pub trait Model {
 
     async fn resolve_pr_number_with_target(
         &self,
-        remote: Option<&String>,
+        remote: &EvalWithCfgFallback<String>,
         upstream_remote: &str,
         number_or_rev: &str,
     ) -> Result<(Target, u64)> {
@@ -108,7 +109,7 @@ pub trait Model {
 
     async fn resolve_pr_with_target(
         &self,
-        remote: Option<&String>,
+        remote: &EvalWithCfgFallback<String>,
         upstream_remote: &str,
         number_or_rev: &str,
     ) -> Result<(PrDetails, Target)> {
@@ -125,10 +126,22 @@ pub trait Model {
 
     async fn resolve_target(
         &self,
-        remote: Option<&String>,
+        remote: &EvalWithCfgFallback<String>,
         upstream_remote: Option<&str>,
     ) -> Result<(String, Target)> {
         let remote = self.jj().resolve_default_remote(remote).await?;
+        self.resolve_target_for(remote, upstream_remote).await
+    }
+
+    /// Like [`Self::resolve_target`] but for an already-resolved remote name.
+    /// Looks up the remote's URL (and the upstream's, if given) and derives the
+    /// PR [`Target`]. Callers that pick the remote themselves (e.g. `pr fetch`,
+    /// which selects the PR-host remote) use this to skip default resolution.
+    async fn resolve_target_for(
+        &self,
+        remote: String,
+        upstream_remote: Option<&str>,
+    ) -> Result<(String, Target)> {
         let origin_url = self
             .jj()
             .remote_url(&remote)

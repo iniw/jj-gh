@@ -53,6 +53,7 @@ subcommand_args! {
 /// # Errors
 ///
 /// Returns an error from any step (rev resolution, GH API, editor, etc.).
+#[expect(clippy::too_many_lines)]
 pub async fn run(model: &impl Model, args: &EditArgs) -> Result<()> {
     let gh = model.gh().await?;
     let editor = model.editor();
@@ -76,8 +77,9 @@ pub async fn run(model: &impl Model, args: &EditArgs) -> Result<()> {
     let editor_argv = editor::resolve_editor(editor_cfg.as_ref(), model.env())?;
     let spinner = Spinner::start("Resolving PR");
 
+    let upstream_remote = crate::gh::remote::resolved_upstream_remote(upstream_remote);
     let (target, pr_number) = model
-        .resolve_pr_number_with_target(remote.as_ref(), upstream_remote, number_or_rev)
+        .resolve_pr_number_with_target(remote, upstream_remote, number_or_rev)
         .await?;
     let details = gh
         .get_pr(&target.owner, &target.repo, pr_number)

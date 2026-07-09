@@ -5,7 +5,21 @@
 //! because GitHub's list-PRs `head` filter is silently ignored without the owner prefix.
 
 use crate::git::url::parse_owner_repo;
+use crate::util::EvalWithCfgFallback;
 use anyhow::{Result, anyhow};
+
+/// Default PR-target remote used by commands that need one when neither the
+/// `--upstream-remote` flag nor the `upstream_remote` config value is set.
+pub const DEFAULT_UPSTREAM_REMOTE: &str = "upstream";
+
+/// Resolve the effective upstream-remote name: the `--upstream-remote` flag,
+/// then the `upstream_remote` config value, else [`DEFAULT_UPSTREAM_REMOTE`].
+#[must_use]
+pub fn resolved_upstream_remote(upstream_remote: &EvalWithCfgFallback<String>) -> &str {
+    upstream_remote
+        .or_fallback()
+        .map_or(DEFAULT_UPSTREAM_REMOTE, String::as_str)
+}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Target {

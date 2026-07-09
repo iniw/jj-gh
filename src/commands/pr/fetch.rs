@@ -13,11 +13,13 @@ use crate::{
     gh::{Gh, PrDetails},
     git::real::GitOps,
     jj::{
-        Jj,
+        Jj, JjExt,
         inject::{TemplateAliases, escape_jj_string},
+        remote_resolution_error,
     },
     model::Model,
     ui::Spinner,
+    util::EvalWithCfgFallback,
 };
 use anyhow::{Context, Result, anyhow};
 use jj_gh_config_derive::subcommand_args;
@@ -47,6 +49,68 @@ fn ensure_colocated(workspace_root: &Path) -> Result<()> {
          that was initialized with `jj git init --colocate`.",
         workspace_root.display()
     ))
+}
+
+/// Resolve the remote that hosts the PR (where `refs/pull/N/head` lives).
+///
+/// Precedence: explicit `--upstream-remote`, explicit `--remote`, config
+/// `upstream_remote` (only if that remote exists), git's auto-detected default
+/// push remote, config `default_remote`. Explicit flags error loudly if they
+/// name a remote that is not configured; the config `upstream_remote` silently
+/// falls through when its remote is absent (its default is the literal
+/// `upstream`, which most repos do not have).
+async fn resolve_host_remote(
+    jj: &impl Jj,
+    remote: &EvalWithCfgFallback<String>,
+    upstream_remote: &EvalWithCfgFallback<String>,
+) -> Result<String> {
+    let names = jj.remote_names().await.unwrap_or_default();
+    let exists = |name: &str| names.iter().any(|n| n == name);
+
+    if let Some(name) = upstream_remote.cli() {
+        if !exists(name) {
+            return Err(missing_flag_remote_error("--upstream-remote", name, &names));
+        }
+        log::debug!("fetch: host remote from explicit --upstream-remote `{name}`");
+        return Ok(name.clone());
+    }
+    if let Some(name) = remote.cli() {
+        if !exists(name) {
+            return Err(missing_flag_remote_error("--remote", name, &names));
+        }
+        log::debug!("fetch: host remote from explicit --remote `{name}`");
+        return Ok(name.clone());
+    }
+    if let Some(name) = upstream_remote.fallback() {
+        if exists(name) {
+            log::debug!("fetch: host remote from config upstream_remote `{name}`");
+            return Ok(name.clone());
+        }
+        log::debug!("fetch: config upstream_remote `{name}` not configured; falling through");
+    }
+    if let Some(name) = jj.auto_detected_remote().await {
+        log::debug!("fetch: host remote from git auto-detect `{name}`");
+        return Ok(name);
+    }
+    if let Some(name) = remote.fallback() {
+        log::debug!("fetch: host remote from config default_remote `{name}`");
+        return Ok(name.clone());
+    }
+    Err(remote_resolution_error(&names))
+}
+
+/// Error for an explicit remote flag that names a remote which is not
+/// configured. Explicit intent must fail loudly rather than fall through.
+fn missing_flag_remote_error(flag: &str, name: &str, remote_names: &[String]) -> anyhow::Error {
+    let configured = if remote_names.is_empty() {
+        "(none)".to_string()
+    } else {
+        remote_names.join(", ")
+    };
+    anyhow!(
+        "{flag} `{name}` is not a configured git remote. \
+         Configured remotes: {configured}"
+    )
 }
 
 subcommand_args! {
@@ -106,7 +170,7 @@ pub async fn run(model: &impl Model, args: &FetchArgs) -> Result<()> {
                 verbose: _,
                 quiet: _,
                 log_level: _,
-                upstream_remote: _,
+                upstream_remote,
                 gh_askpass: _,
                 askpass_timeout_secs: _,
             },
@@ -117,7 +181,11 @@ pub async fn run(model: &impl Model, args: &FetchArgs) -> Result<()> {
 
     let spinner = Spinner::start("Resolving PR");
 
-    let (remote, target) = model.resolve_target(remote.as_ref(), None).await?;
+    // `refs/pull/N/head` lives on the repo that hosts the PR (the upstream in a
+    // fork workflow), so fetch resolves the host remote rather than the push
+    // remote used elsewhere.
+    let host = resolve_host_remote(jj, remote, upstream_remote).await?;
+    let (remote, target) = model.resolve_target_for(host, None).await?;
 
     let pr = gh.get_pr(&target.owner, &target.repo, *pr_num).await?;
     if pr.head_user_login.is_none() || pr.head_repo_name.is_none() {
@@ -231,14 +299,20 @@ mod tests {
         workspace_root: PathBuf,
         origin: Option<String>,
         expected_remote: String,
+        remote_names: Vec<String>,
+        auto_detect: Option<String>,
         import_calls: Mutex<u32>,
         eval_template_return: String,
         eval_template_calls: Mutex<Vec<EvalCall>>,
     }
 
     impl Jj for FakeJj {
-        async fn default_remote(&self) -> Result<String> {
-            Ok("origin".into())
+        async fn default_remote(&self) -> Result<Option<String>> {
+            Ok(self.auto_detect.clone())
+        }
+
+        async fn remote_names(&self) -> Result<Vec<String>> {
+            Ok(self.remote_names.clone())
         }
 
         async fn resolve_rev(&self, _rev: &str) -> Result<CommitInfo> {
@@ -447,6 +521,18 @@ mod tests {
     }
 
     fn args_with_remote(pr: u64, template: Option<&str>, force: bool, remote: &str) -> FetchArgs {
+        fetch_args(pr, template, force, Some(remote), None)
+    }
+
+    /// Build [`FetchArgs`] with explicit `--remote` / `--upstream-remote`
+    /// values (both as CLI overrides).
+    fn fetch_args(
+        pr: u64,
+        template: Option<&str>,
+        force: bool,
+        remote: Option<&str>,
+        upstream_remote: Option<&str>,
+    ) -> FetchArgs {
         FetchArgs {
             pr,
             template: template.map(str::to_string),
@@ -455,8 +541,11 @@ mod tests {
                 verbose: 0,
                 quiet: false,
                 log_level: None,
-                remote: Some(remote.into()),
-                upstream_remote: "upstream".into(),
+                remote: EvalWithCfgFallback::new(remote.map(str::to_string), None),
+                upstream_remote: EvalWithCfgFallback::new(
+                    upstream_remote.map(str::to_string),
+                    None,
+                ),
                 gh_askpass: None,
                 askpass_timeout_secs: 20,
             },
@@ -474,6 +563,8 @@ mod tests {
             workspace_root: dir.path().to_path_buf(),
             origin: origin.map(str::to_string),
             expected_remote: "origin".into(),
+            remote_names: vec!["origin".into(), "fork".into()],
+            auto_detect: Some("origin".into()),
             import_calls: Mutex::new(0),
             eval_template_return: eval_return.into(),
             eval_template_calls: Mutex::new(Vec::new()),
@@ -508,7 +599,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn config_default_remote_propagates_to_jj_and_git() {
+    async fn remote_flag_selects_host_remote() {
         let dir = colocated_workspace();
         let mut jj = jj_for(&dir, Some("git@github.com:o/r.git"), "pr-1234/feature/foo");
         jj.expected_remote = "fork".into();
@@ -526,6 +617,81 @@ mod tests {
 
         let calls = git.fetches.borrow();
         assert_eq!(calls[0].remote, "fork");
+    }
+
+    #[tokio::test]
+    async fn upstream_remote_flag_selects_host_remote() {
+        let dir = colocated_workspace();
+        let mut jj = jj_for(
+            &dir,
+            Some("git@github.com:up-owner/r.git"),
+            "pr-1234/feature/foo",
+        );
+        jj.expected_remote = "up".into();
+        jj.remote_names = vec!["origin".into(), "up".into()];
+        let gh = gh_for(details(), "up-owner", "r");
+        let git = FakeGit {
+            exists: false,
+            fetches: RefCell::new(vec![]),
+        };
+        run(
+            &TestModel::new(&jj, &gh, &git),
+            &fetch_args(1234, None, false, Some("origin"), Some("up")),
+        )
+        .await
+        .unwrap();
+
+        // --upstream-remote outranks --remote: PR ref lives on the upstream.
+        assert_eq!(git.fetches.borrow()[0].remote, "up");
+    }
+
+    #[tokio::test]
+    async fn upstream_remote_flag_missing_errors() {
+        let dir = colocated_workspace();
+        let mut jj = jj_for(&dir, Some("git@github.com:o/r.git"), "irrelevant");
+        jj.remote_names = vec!["origin".into()];
+        let gh = gh_for(details(), "o", "r");
+        let git = FakeGit {
+            exists: false,
+            fetches: RefCell::new(vec![]),
+        };
+        let err = run(
+            &TestModel::new(&jj, &gh, &git),
+            &fetch_args(1234, None, false, None, Some("bogus")),
+        )
+        .await
+        .unwrap_err();
+        let msg = format!("{err:#}");
+        assert!(msg.contains("--upstream-remote"), "msg: {msg}");
+        assert!(msg.contains("bogus"), "msg: {msg}");
+        assert!(git.fetches.borrow().is_empty());
+    }
+
+    #[tokio::test]
+    async fn no_remote_resolves_teaching_error() {
+        let dir = colocated_workspace();
+        let mut jj = jj_for(&dir, None, "irrelevant");
+        // No explicit flags, no config, and git cannot auto-detect a default.
+        jj.remote_names = vec!["NixOS".into(), "up".into()];
+        jj.auto_detect = None;
+        let gh = gh_for(details(), "o", "r");
+        let git = FakeGit {
+            exists: false,
+            fetches: RefCell::new(vec![]),
+        };
+        let err = run(
+            &TestModel::new(&jj, &gh, &git),
+            &fetch_args(1234, None, false, None, None),
+        )
+        .await
+        .unwrap_err();
+        let msg = format!("{err:#}");
+        assert!(
+            msg.contains("could not determine the default git remote"),
+            "msg: {msg}"
+        );
+        assert!(msg.contains("NixOS"), "msg: {msg}");
+        assert!(git.fetches.borrow().is_empty());
     }
 
     #[tokio::test]

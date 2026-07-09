@@ -4,6 +4,7 @@
 //! impl shells out to `jj` (and to `git` against jj's embedded store for the
 //! remote URL); tests use a fake.
 
+use crate::util::EvalWithCfgFallback;
 use anyhow::Result;
 use serde::Deserialize;
 use std::path::{Path, PathBuf};
@@ -31,12 +32,21 @@ pub struct PushedBookmark {
 }
 
 pub trait Jj {
-    /// Resolve the default push remote for the repository.
+    /// Resolve the repository's default push remote, or `Ok(None)` when git
+    /// cannot determine one (no `remote.pushDefault`, no branch tracking, and
+    /// no `origin`). `Err` is reserved for genuine store-query failures.
     ///
     /// # Errors
     ///
     /// Propagates errors from the embedded git store query.
-    async fn default_remote(&self) -> Result<String>;
+    async fn default_remote(&self) -> Result<Option<String>>;
+
+    /// Names of every git remote configured in the repository, sorted.
+    ///
+    /// # Errors
+    ///
+    /// Propagates errors from the embedded git store query.
+    async fn remote_names(&self) -> Result<Vec<String>>;
 
     /// Resolve a single revision into commit metadata.
     ///
@@ -167,20 +177,79 @@ pub trait Jj {
 }
 
 pub trait JjExt {
-    /// Return the given remote if `Some`, else look up the repository default.
-    async fn resolve_default_remote(&self, remote: Option<&String>) -> Result<String>;
+    /// Resolve the remote for the user's own pushes and PR head lookups.
+    ///
+    /// Precedence: the explicit `--remote` flag, then git's auto-detected
+    /// default push remote, then the `default_remote` config fallback. Errors
+    /// with a guide when none resolve.
+    ///
+    /// # Errors
+    ///
+    /// Returns a teaching error listing the configured remotes when no remote
+    /// resolves; propagates store-query failures.
+    async fn resolve_default_remote(&self, remote: &EvalWithCfgFallback<String>) -> Result<String>;
+
+    /// Auto-detect the default push remote, logging what git returned and
+    /// mapping any store-query error to `None` (so resolution can fall through
+    /// to the config fallback rather than aborting).
+    async fn auto_detected_remote(&self) -> Option<String>;
 }
 
 impl<T> JjExt for T
 where
     T: Jj,
 {
-    async fn resolve_default_remote(&self, remote: Option<&String>) -> Result<String> {
-        match remote {
-            Some(remote) => Ok(remote.clone()),
-            None => self.default_remote().await,
+    async fn auto_detected_remote(&self) -> Option<String> {
+        match self.default_remote().await {
+            Ok(Some(name)) => {
+                log::debug!("remote: git auto-detected default push remote `{name}`");
+                Some(name)
+            }
+            Ok(None) => {
+                log::debug!("remote: git found no default push remote");
+                None
+            }
+            Err(e) => {
+                log::debug!("remote: default-remote lookup failed: {e:#}");
+                None
+            }
         }
     }
+
+    async fn resolve_default_remote(&self, remote: &EvalWithCfgFallback<String>) -> Result<String> {
+        let Some(name) = remote.resolve(|| self.auto_detected_remote()).await else {
+            let names = self.remote_names().await.unwrap_or_default();
+            return Err(remote_resolution_error(&names));
+        };
+        log::debug!("remote: resolved to `{name}`");
+        Ok(name)
+    }
+}
+
+/// Build the teaching error shown when no git remote can be resolved. Explains
+/// the resolution order and lists the remotes that *are* configured so the
+/// user can pick one.
+#[must_use]
+pub fn remote_resolution_error(remote_names: &[String]) -> anyhow::Error {
+    let configured = if remote_names.is_empty() {
+        "(none)".to_string()
+    } else {
+        remote_names.join(", ")
+    };
+    anyhow::anyhow!(
+        concat!(
+            "could not determine the default git remote for this repository.\n",
+            "\n",
+            "jj-gh resolves the remote in this order:\n",
+            "  1. --upstream-remote / --remote flag\n",
+            "  2. jj-gh.upstream_remote / jj-gh.default_remote in config\n",
+            "  3. git's default push remote (branch.<b>.pushRemote, remote.pushDefault, else `origin`)\n",
+            "\n",
+            "None matched. Configured remotes: {}\n",
+            "Fix: set `jj-gh.default_remote = \"<name>\"` in your jj config, or pass `--remote <name>`.",
+        ),
+        configured
+    )
 }
 
 /// Compose the revset used to compute the default PR title.

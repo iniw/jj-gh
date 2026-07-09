@@ -40,8 +40,8 @@ This document contains the help content for the `jj-gh` command-line program.
 - `-v`, `--verbose` — Increase log verbosity (repeat for more, e.g. `-vv`)
 - `-q`, `--quiet` — Drop log level to `ERROR`
 - `--log-level <LEVEL>` — Set log level explicitly, overrides `-v` and `-q`
-- `--remote <NAME>` — Git remote used for the user's own pushes and PR head lookups. Default: `origin` (or `default_remote` in config)
-- `--upstream-remote <NAME>` — Git remote used as the PR target in fork workflows. Default: `upstream` (or `upstream_remote` in config)
+- `--remote <NAME>` — Git remote used for the user's own pushes and PR head lookups. Precedence: this flag, then git's auto-detected default push remote, then `default_remote` in config
+- `--upstream-remote <NAME>` — Git remote used as the PR target in fork workflows. Precedence: this flag, then `upstream_remote` in config, else [`crate::gh::remote::DEFAULT_UPSTREAM_REMOTE`]
 - `--gh-askpass <CMD>` — Askpass helper command that prints a GitHub token on stdout; e.g. `--gh-askpass "op read op://Vault/gh/token"`. Highest-priority token source; outranks `$GH_ASKPASS`, the token env vars, and `gh_askpass` in config
 - `--askpass-timeout <SECS>` — Timeout in seconds for the askpass helper. Default: 20
 
@@ -278,8 +278,8 @@ Lookup the PR by the given number or revision ID and print its full URL. This is
 
 ###### **Options:**
 
-- `--remote <NAME>` — Git remote used for the user's own pushes and PR head lookups. Default: `origin` (or `default_remote` in config)
-- `--upstream-remote <NAME>` — Git remote used as the PR target in fork workflows. Default: `upstream` (or `upstream_remote` in config)
+- `--remote <NAME>` — Git remote used for the user's own pushes and PR head lookups. Precedence: this flag, then git's auto-detected default push remote, then `default_remote` in config
+- `--upstream-remote <NAME>` — Git remote used as the PR target in fork workflows. Precedence: this flag, then `upstream_remote` in config, else the default upstream
 
 ## `jj-gh debug`
 

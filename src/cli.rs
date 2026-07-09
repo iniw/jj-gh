@@ -45,16 +45,18 @@ subcommand_args! {
         pub log_level: Option<LevelFilter>,
 
         /// Git remote used for the user's own pushes and PR head lookups.
-        /// Default: `origin` (or `default_remote` in config).
+        /// Precedence: this flag, then git's auto-detected default push remote,
+        /// then `default_remote` in config.
         #[arg(long, value_name = "NAME", global = true)]
-        #[config(maps_to = "default_remote")]
+        #[config(fallback = "default_remote")]
         pub remote: Option<String>,
 
-        /// Git remote used as the PR target in fork workflows. Default:
-        /// `upstream` (or `upstream_remote` in config).
+        /// Git remote used as the PR target in fork workflows. Precedence: this
+        /// flag, then `upstream_remote` in config, else
+        /// [`crate::gh::remote::DEFAULT_UPSTREAM_REMOTE`].
         #[arg(long, value_name = "NAME", global = true)]
-        #[config]
-        pub upstream_remote: String,
+        #[config(fallback = "upstream_remote")]
+        pub upstream_remote: Option<String>,
 
         /// Askpass helper command that prints a GitHub token on stdout;
         /// e.g. `--gh-askpass "op read op://Vault/gh/token"`.

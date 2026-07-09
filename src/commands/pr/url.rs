@@ -9,16 +9,17 @@ subcommand_args! {
         pub number_or_rev: String,
 
         /// Git remote used for the user's own pushes and PR head lookups.
-        /// Default: `origin` (or `default_remote` in config).
+        /// Precedence: this flag, then git's auto-detected default push remote,
+        /// then `default_remote` in config.
         #[arg(long, value_name = "NAME", global = true)]
-        #[config(maps_to = "default_remote")]
+        #[config(fallback = "default_remote")]
         pub remote: Option<String>,
 
-        /// Git remote used as the PR target in fork workflows. Default:
-        /// `upstream` (or `upstream_remote` in config).
+        /// Git remote used as the PR target in fork workflows. Precedence: this
+        /// flag, then `upstream_remote` in config, else the default upstream.
         #[arg(long, value_name = "NAME", global = true)]
-        #[config]
-        pub upstream_remote: String,
+        #[config(fallback = "upstream_remote")]
+        pub upstream_remote: Option<String>,
     }
 }
 
@@ -29,8 +30,9 @@ pub async fn run(model: &impl Model, args: &PrUrlArgs) -> Result<()> {
         remote,
         upstream_remote,
     } = args;
+    let upstream_remote = crate::gh::remote::resolved_upstream_remote(upstream_remote);
     let pr = model
-        .resolve_pr(remote.as_ref(), upstream_remote.as_ref(), number_or_rev)
+        .resolve_pr(remote, upstream_remote, number_or_rev)
         .await
         .context("resolving PR")?;
     println!("{}", pr.html_url.trim());

@@ -14,6 +14,7 @@ use crate::{
     jj::{Jj, PushedBookmark},
     model::Model,
     ui::Spinner,
+    util::EvalWithCfgFallback,
 };
 use anyhow::{Result, anyhow};
 use futures::{StreamExt, stream::FuturesUnordered};
@@ -123,7 +124,8 @@ pub async fn run(model: &impl Model, args: &RestackArgs) -> Result<()> {
         askpass_timeout_secs: _,
     } = &args.globals;
 
-    let ctx = gather_context(model, remote.as_ref(), upstream_remote).await?;
+    let upstream_remote = crate::gh::remote::resolved_upstream_remote(upstream_remote);
+    let ctx = gather_context(model, remote, upstream_remote).await?;
 
     let force_dry = args.dry_run
         || args.json
@@ -163,7 +165,7 @@ pub(crate) struct RestackContext {
 
 async fn gather_context(
     model: &impl Model,
-    remote: Option<&String>,
+    remote: &EvalWithCfgFallback<String>,
     upstream_remote: &str,
 ) -> Result<RestackContext> {
     let spinner = Spinner::start("Resolving local PRs");

@@ -53,7 +53,8 @@ async fn print_rev(globals: &GlobalOpts, _config: &Config, rev: &str) -> Result<
         askpass_timeout_secs: _,
     } = globals;
     let jj = JjCli::new().await?;
-    let remote = jj.resolve_default_remote(remote.as_ref()).await?;
+    let remote = jj.resolve_default_remote(remote).await?;
+    let upstream_remote = crate::gh::remote::resolved_upstream_remote(upstream_remote);
 
     let spinner = Spinner::start("Resolving revision metadata");
 
@@ -110,7 +111,8 @@ async fn print_pr_lookup(globals: &GlobalOpts, config: &Config, rev: &str) -> Re
     } = globals;
     let spinner = Spinner::start("Resolving PR");
     let jj = JjCli::new().await?;
-    let remote = jj.resolve_default_remote(remote.as_ref()).await?;
+    let remote = jj.resolve_default_remote(remote).await?;
+    let upstream_remote = crate::gh::remote::resolved_upstream_remote(upstream_remote);
     let token = auth::resolve_token(globals.gh_askpass.as_deref(), config).await?;
     let gh = OctocrabGh::new(&token)?;
 
