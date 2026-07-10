@@ -93,7 +93,7 @@ enum ActorType @docsCategory(name: "users") {
 input AddAssigneesToAssignableInput {
     agentAssignment: AgentAssignmentInput
     assignableId: ID! @possibleTypes(concreteTypes: ["Issue", "PullRequest"], abstractType: "Assignable")
-    assigneeIds: [ID!]!
+    assigneeIds: [ID!]
     @possibleTypes(
       concreteTypes: ["Bot", "EnterpriseUserAccount", "Mannequin", "Organization", "User"]
       abstractType: "Actor"
@@ -3286,6 +3286,14 @@ type DismissRepositoryVulnerabilityAlertPayload {
     clientMutationId: String
     repositoryVulnerabilityAlert: RepositoryVulnerabilityAlert
 }
+type DismissalRestriction @docsCategory(name: "pulls") {
+    allowedActors: [ID!]
+    enabled: Boolean!
+}
+input DismissalRestrictionInput @docsCategory(name: "pulls") {
+    allowedActors: [ID!]
+    enabled: Boolean!
+}
 type DraftIssue implements Node @docsCategory(name: "projects") {
     assignees(
         after: String
@@ -5046,6 +5054,7 @@ type IssueFieldAddedEvent implements Node @docsCategory(name: "issues") {
     createdAt: DateTime!
     id: ID!
     issueField: IssueFields
+    options: [IssueFieldTimelineOption!]
     value: String
 }
 type IssueFieldChangedEvent implements Node @docsCategory(name: "issues") {
@@ -5054,8 +5063,10 @@ type IssueFieldChangedEvent implements Node @docsCategory(name: "issues") {
     id: ID!
     issueField: IssueFields
     newColor: String
+    newOptions: [IssueFieldTimelineOption!]
     newValue: String
     previousColor: String
+    previousOptions: [IssueFieldTimelineOption!]
     previousValue: String
 }
 interface IssueFieldCommon @docsCategory(name: "issues") {
@@ -5139,6 +5150,7 @@ type IssueFieldRemovedEvent implements Node @docsCategory(name: "issues") {
     createdAt: DateTime!
     id: ID!
     issueField: IssueFields
+    options: [IssueFieldTimelineOption!]
 }
 type IssueFieldSingleSelect implements IssueFieldCommon & Node @docsCategory(name: "issues") {
     createdAt: DateTime!
@@ -5197,6 +5209,10 @@ type IssueFieldTextValue implements IssueFieldValueCommon & Node @docsCategory(n
     field: IssueFields
     id: ID!
     value: String!
+}
+type IssueFieldTimelineOption @docsCategory(name: "issues") {
+    color: String
+    name: String!
 }
 union IssueFieldValue @docsCategory(name: "issues") =
   | IssueFieldDateValue
@@ -12375,6 +12391,7 @@ enum PullRequestOrderField @docsCategory(name: "pulls") {
 type PullRequestParameters @docsCategory(name: "pulls") {
     allowedMergeMethods: [PullRequestAllowedMergeMethods!]
     dismissStaleReviewsOnPush: Boolean!
+    dismissalRestriction: DismissalRestriction
     requireCodeOwnerReview: Boolean!
     requireLastPushApproval: Boolean!
     requiredApprovingReviewCount: Int!
@@ -12384,6 +12401,7 @@ type PullRequestParameters @docsCategory(name: "pulls") {
 input PullRequestParametersInput @docsCategory(name: "pulls") {
     allowedMergeMethods: [PullRequestAllowedMergeMethods!]
     dismissStaleReviewsOnPush: Boolean!
+    dismissalRestriction: DismissalRestrictionInput
     requireCodeOwnerReview: Boolean!
     requireLastPushApproval: Boolean!
     requiredApprovingReviewCount: Int!
@@ -15970,6 +15988,7 @@ enum RepositoryRuleType {
     DELETION
     FILE_EXTENSION_RESTRICTION
     FILE_PATH_RESTRICTION
+    LICENSE_COMPLIANCE_SCANNING
     LOCK_BRANCH
     MAX_FILE_PATH_LENGTH
     MAX_FILE_SIZE
@@ -19438,6 +19457,7 @@ input UpdateRepositoryInput {
     hasSponsorshipsEnabled: Boolean
     hasWikiEnabled: Boolean
     homepageUrl: URI
+    issueCreationPolicy: IssueCreationPolicy
     name: String
     pullRequestCreationPolicy: PullRequestCreationPolicy
     repositoryId: ID! @possibleTypes(concreteTypes: ["Repository"])
