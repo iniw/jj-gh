@@ -57,12 +57,12 @@ graphql_client = "0.16"
 http = "1"
 jj-gh-config-derive = { path = "tools/jj-gh-config-derive", version = "0.1.3" }
 log = "0.4"
-octocrab = "0.53"
+octocrab = "0.54"
 schemars = { version = "1", optional = true }
 secrecy = { version = "0.10", features = ["serde"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-noyalib = "0.0.8"
+noyalib = "0.0.14"
 shell-words = "1"
 tempfile = "3"
 thiserror = "2"
