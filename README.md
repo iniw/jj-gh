@@ -63,7 +63,7 @@ The Nix package installs the manpage automatically. Run `man jj-gh` to view it.
     enable = true;
     # Map of `jj` alias name -> `jj-gh` subcommand. Each entry installs the
     # alias *and* drops a completion overlay for `jj <name> <tab>` into any
-    # shell home-manager has enabled (fish/bash/zsh).
+    # shell home-manager has enabled (fish/bash/nushell/zsh).
     # aliases = { pr = "pr"; };
     settings = {
       gh_askpass = [
@@ -214,11 +214,17 @@ eval "$(jj-gh completions bash --jj-alias pr --subcommand pr)"
 # zsh (after compinit)
 source <(jj util completion zsh)
 source <(jj-gh completions zsh --jj-alias pr --subcommand pr)
+
+# nushell
+jj util completion nushell | save -f completions-jj.nu
+jj-gh completions nushell --jj-alias pr --subcommand pr | save -f completions-jj-gh-pr.nu
+source completions-jj.nu
+source completions-jj-gh-pr.nu
 ```
 
 The overlay must be sourced _after_ `jj util completion <shell>` so it can chain to jj's completer when the alias is not the one being completed.
 
-If you use the `home-manager` module with `programs.fish.enable` / `programs.bash.enable` / `programs.zsh.enable` set, the matching overlay is
+If you use the `home-manager` module with `programs.fish.enable` / `programs.bash.enable` / `programs.nushell.enable` / `programs.zsh.enable` set, the matching overlay is
 wired up automatically for every entry in `programs.jujutsu.gh.aliases`. You only need the manual steps above when installing via
 `cargo install` or from source.
 

@@ -338,7 +338,19 @@ Without flags, emits a standalone completion script for the `jj-gh` binary. With
 
 - `<SHELL>`
 
-  Possible values: `bash`, `elvish`, `fish`, `powershell`, `zsh`
+  Possible values:
+  - `bash`:
+    Bash
+  - `elvish`:
+    Elvish
+  - `fish`:
+    Fish
+  - `nushell`:
+    Nushell
+  - `powershell`:
+    PowerShell
+  - `zsh`:
+    Zsh
 
 ###### **Options:**
 

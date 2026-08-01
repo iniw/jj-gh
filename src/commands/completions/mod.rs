@@ -17,6 +17,7 @@
 
 mod bash;
 mod fish;
+mod nushell;
 mod zsh;
 
 use crate::{Cli, commands::pr::PrAction};
@@ -26,51 +27,63 @@ use std::{fmt::Display, io::Write};
 
 pub fn run(
     bin_name: &str,
-    shell: clap_complete::Shell,
+    shell: CompletionShell,
     jj_alias: Option<String>,
     jj_gh_subcommand: Option<SubcommandStr>,
 ) -> Result<()> {
-    match (jj_alias, jj_gh_subcommand) {
-        (Some(alias), Some(subcommand)) => {
-            alias_completions(shell.into(), &alias, subcommand, &mut std::io::stdout())?;
-        }
-        _ => {
-            clap_complete::generate(shell, &mut Cli::command(), bin_name, &mut std::io::stdout());
-        }
+    if let (Some(alias), Some(subcommand)) = (jj_alias, jj_gh_subcommand) {
+        alias_completions(shell, &alias, subcommand, &mut std::io::stdout())?;
+    } else {
+        let mut cmd = Cli::command();
+        cmd.set_bin_name(bin_name);
+        cmd.build();
+        shell.generator().generate(&cmd, &mut std::io::stdout());
     }
 
     Ok(())
 }
 
-/// Shells for which an overlay can be emitted. Sibling to
-/// `clap_complete::Shell`, but narrower: only shells whose programmable
-/// completion model supports the layering we need (predicate-gated rules
-/// or wrapper functions) get a dedicated variant. Anything else lands in
-/// `Other` so the dispatch can produce a clear error referencing the name
-/// the user actually passed.
-#[derive(Clone, Debug, Eq, Hash, PartialEq)]
-#[non_exhaustive]
-pub enum Shell {
+/// Shell completion generators supported by jj-gh.
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq, clap::ValueEnum)]
+pub enum CompletionShell {
     /// Bash.
     Bash,
+    /// Elvish.
+    Elvish,
     /// Fish.
     Fish,
+    /// Nushell.
+    Nushell,
+    /// PowerShell.
+    #[value(name = "powershell")]
+    PowerShell,
     /// Zsh.
     Zsh,
-    /// Any shell name we don't have an overlay implementation for. The
-    /// inner string is whatever the user passed (e.g. `"powershell"`,
-    /// `"elvish"`).
-    Other(String),
 }
 
-impl From<clap_complete::Shell> for Shell {
-    fn from(shell: clap_complete::Shell) -> Self {
-        match shell {
-            clap_complete::Shell::Bash => Self::Bash,
-            clap_complete::Shell::Fish => Self::Fish,
-            clap_complete::Shell::Zsh => Self::Zsh,
-            other => Self::Other(other.to_string()),
+impl CompletionShell {
+    fn generator(&self) -> &dyn clap_complete::Generator {
+        match self {
+            Self::Bash => &clap_complete::Shell::Bash,
+            Self::Elvish => &clap_complete::Shell::Elvish,
+            Self::Fish => &clap_complete::Shell::Fish,
+            Self::Nushell => &clap_complete_nushell::Nushell,
+            Self::PowerShell => &clap_complete::Shell::PowerShell,
+            Self::Zsh => &clap_complete::Shell::Zsh,
         }
+    }
+}
+
+impl Display for CompletionShell {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(match self {
+            Self::Bash => "bash",
+            Self::Elvish => "elvish",
+            Self::Fish => "fish",
+            Self::Nushell => "nushell",
+            Self::PowerShell => "powershell",
+            Self::Zsh => "zsh",
+        })
     }
 }
 
@@ -101,7 +114,7 @@ fn _ensure_subcmds_handled(cmd: crate::cli::Command) {
 
 /// Emit a completion overlay for `jj <alias> <tab>` to `out`.
 fn alias_completions<W: Write>(
-    shell: Shell,
+    shell: CompletionShell,
     alias: &str,
     subcommand: SubcommandStr,
     out: &mut W,
@@ -110,10 +123,13 @@ fn alias_completions<W: Write>(
         SubcommandStr::Pr => PrAction::augment_subcommands(Command::new("pr")),
     };
     match shell {
-        Shell::Fish => fish::emit(&cmd, alias, out)?,
-        Shell::Bash => bash::emit(&cmd, alias, out)?,
-        Shell::Zsh => zsh::emit(&cmd, alias, out)?,
-        Shell::Other(name) => bail!("--jj-alias overlay not supported for shell `{name}`"),
+        CompletionShell::Fish => fish::emit(&cmd, alias, out)?,
+        CompletionShell::Bash => bash::emit(&cmd, alias, out)?,
+        CompletionShell::Nushell => nushell::emit(&cmd, alias, out)?,
+        CompletionShell::Zsh => zsh::emit(&cmd, alias, out)?,
+        shell @ (CompletionShell::Elvish | CompletionShell::PowerShell) => {
+            bail!("--jj-alias overlay not supported for shell `{shell}`");
+        }
     }
     Ok(())
 }
@@ -197,7 +213,7 @@ pub(super) fn fake_pr_command() -> Command {
 mod tests {
     use super::*;
 
-    fn emit_string(shell: Shell) -> String {
+    fn emit_string(shell: CompletionShell) -> String {
         let mut buf = Vec::<u8>::new();
         alias_completions(shell, "pr", SubcommandStr::Pr, &mut buf).unwrap();
         String::from_utf8(buf).unwrap()
@@ -207,19 +223,19 @@ mod tests {
     fn real_pr_action_covers_all_visible_subcommands() {
         // Catches regressions when adding/renaming subcommands or visible
         // aliases on `PrAction`; fake_pr_command is too narrow to notice.
-        let bash = emit_string(Shell::Bash);
+        let bash = emit_string(CompletionShell::Bash);
         for name in ["create", "c", "fetch", "f", "auto-merge", "am", "log", "l"] {
             assert!(bash.contains(name), "bash overlay missing `{name}`");
         }
         assert!(bash.contains("complete -F _jj_gh_alias_wrapper_pr jj"));
 
-        let zsh = emit_string(Shell::Zsh);
+        let zsh = emit_string(CompletionShell::Zsh);
         for name in ["create", "c", "fetch", "f", "auto-merge", "am", "log", "l"] {
             assert!(zsh.contains(name), "zsh overlay missing `{name}`");
         }
         assert!(zsh.contains("compdef _jj_gh_alias_pr jj"));
 
-        let fish = emit_string(Shell::Fish);
+        let fish = emit_string(CompletionShell::Fish);
         for name in ["create", "c", "fetch", "f", "auto-merge", "am", "log", "l"] {
             assert!(
                 fish.contains(&format!("-a '{name}'")),
@@ -227,13 +243,21 @@ mod tests {
             );
         }
         assert!(fish.contains("__jj_gh_alias_no_subcommand pr"));
+
+        let nushell = emit_string(CompletionShell::Nushell);
+        for name in ["create", "c", "fetch", "f", "auto-merge", "am", "log", "l"] {
+            assert!(
+                nushell.contains(&format!(r#"export extern "jj pr {name}""#)),
+                "nushell overlay missing `{name}`"
+            );
+        }
     }
 
     #[test]
     fn unsupported_shell_errors_with_name() {
         let mut buf = Vec::<u8>::new();
         let err = alias_completions(
-            Shell::Other("powershell".into()),
+            CompletionShell::PowerShell,
             "pr",
             SubcommandStr::Pr,
             &mut buf,
