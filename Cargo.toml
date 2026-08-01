@@ -38,6 +38,7 @@ anstyle = "1"
 anyhow = "1"
 clap = { workspace = true, features = ["derive", "wrap_help"] }
 clap_complete = "4"
+clap_complete_nushell = "4"
 crossterm = "0.29"
 futures = "0.3"
 figment = { version = "0.10", features = ["toml"] }

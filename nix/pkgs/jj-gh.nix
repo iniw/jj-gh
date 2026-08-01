@@ -27,6 +27,7 @@ craneLib.buildPackage (
         installShellCompletion --cmd jj-gh \
           --bash <(${jj-gh} completions bash) \
           --fish <(${jj-gh} completions fish) \
+          --nushell <(${jj-gh} completions nushell) \
           --zsh <(${jj-gh} completions zsh)
       '';
   }

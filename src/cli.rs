@@ -1,11 +1,13 @@
 //! CLI arg parser
 
-use crate::commands::{completions::SubcommandStr, pr::PrAction};
+use crate::commands::{
+    completions::{CompletionShell, SubcommandStr},
+    pr::PrAction,
+};
 use clap::{
     Parser, Subcommand,
     builder::{Styles, styling::AnsiColor},
 };
-use clap_complete::Shell;
 use jj_gh_config_derive::subcommand_args;
 use log::LevelFilter;
 use std::io::IsTerminal;
@@ -116,7 +118,7 @@ pub enum Command {
     /// `jj <jj-alias> <tab>` on top of jj's own completion script (source
     /// the overlay *after* `jj util completion <shell>`).
     Completions {
-        shell: Shell,
+        shell: CompletionShell,
         /// Emit an overlay for `jj <NAME> <tab>` instead of the standalone
         /// `jj-gh` script. Pass the jj alias name (e.g. `pr`). Must be
         /// paired with `--subcommand`.

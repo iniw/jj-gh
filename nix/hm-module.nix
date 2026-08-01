@@ -54,6 +54,8 @@ in
 
     enableFishIntegration = lib.hm.shell.mkFishIntegrationOption { inherit config; };
 
+    enableNushellIntegration = lib.hm.shell.mkNushellIntegrationOption { inherit config; };
+
     enableZshIntegration = lib.hm.shell.mkZshIntegrationOption { inherit config; };
 
     aliases = mkOption {
@@ -70,7 +72,7 @@ in
         - Installs `programs.jujutsu.settings.aliases.<name>` dispatching to
           `jj-gh <subcommand>` (so e.g. `jj pr create` runs `jj-gh pr create`).
         - Drops a shell completion overlay for `jj <name> <tab>` into each
-          enabled shell (fish/bash/zsh), so completions work out of the box.
+          enabled shell (fish/bash/nushell/zsh), so completions work out of the box.
       '';
     };
 
@@ -272,6 +274,16 @@ in
       programs.bash.initExtra = lib.mkOrder priority (
         lib.concatMapStringsSep "\n" (n: ''
           source ${mkOverlay "bash" n cfg.aliases.${n}}
+        '') (lib.attrNames cfg.aliases)
+      );
+    })
+
+    # nushell: extern declarations for compound command names compose with
+    # jj's own completion module, so no completer wrapping is needed.
+    (mkIf (cfg.enableNushellIntegration && cfg.aliases != { }) {
+      programs.nushell.extraConfig = lib.mkOrder priority (
+        lib.concatMapStringsSep "\n" (n: ''
+          source ${mkOverlay "nushell" n cfg.aliases.${n}}
         '') (lib.attrNames cfg.aliases)
       );
     })
