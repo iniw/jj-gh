@@ -270,12 +270,12 @@ in
       );
     })
 
-    # zsh: source overlays from initExtra. initExtra runs after compinit
+    # zsh: source overlays from initContent. initContent runs after compinit
     # in home-manager's .zshrc, so `_comps[jj]` is already populated from
     # `_jj` in fpath (nixpkgs jujutsu ships it under
     # share/zsh/site-functions) and the overlays can snapshot it directly.
     (mkIf (config.programs.zsh.enable && cfg.aliases != { }) {
-      programs.zsh.initExtra = lib.mkOrder priority (
+      programs.zsh.initContent = lib.mkOrder priority (
         lib.concatMapStringsSep "\n" (n: ''
           source ${mkOverlay "zsh" n cfg.aliases.${n}}
         '') (lib.attrNames cfg.aliases)
