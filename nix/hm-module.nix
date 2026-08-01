@@ -50,6 +50,12 @@ in
       description = "The jj-gh package to install.";
     };
 
+    enableBashIntegration = lib.hm.shell.mkBashIntegrationOption { inherit config; };
+
+    enableFishIntegration = lib.hm.shell.mkFishIntegrationOption { inherit config; };
+
+    enableZshIntegration = lib.hm.shell.mkZshIntegrationOption { inherit config; };
+
     aliases = mkOption {
       type = types.attrsOf types.str;
       default = {
@@ -249,7 +255,7 @@ in
     # `jj-gh-<alias>-overlay.fish` into `completions/` would never fire on
     # `jj <tab>`. Sourcing from interactive init registers the rules
     # against `jj` directly; fish then unions them with jj's own.
-    (mkIf (config.programs.fish.enable && cfg.aliases != { }) {
+    (mkIf (cfg.enableFishIntegration && cfg.aliases != { }) {
       programs.fish.interactiveShellInit = lib.mkOrder priority (
         lib.concatMapStringsSep "\n" (n: ''
           source ${mkOverlay "fish" n cfg.aliases.${n}}
@@ -262,7 +268,7 @@ in
     # completion to load before snapshotting the prior `complete -F`
     # handler, so we don't need to `eval "$(jj util completion bash)"`
     # here.
-    (mkIf (config.programs.bash.enable && cfg.aliases != { }) {
+    (mkIf (cfg.enableBashIntegration && cfg.aliases != { }) {
       programs.bash.initExtra = lib.mkOrder priority (
         lib.concatMapStringsSep "\n" (n: ''
           source ${mkOverlay "bash" n cfg.aliases.${n}}
@@ -274,7 +280,7 @@ in
     # in home-manager's .zshrc, so `_comps[jj]` is already populated from
     # `_jj` in fpath (nixpkgs jujutsu ships it under
     # share/zsh/site-functions) and the overlays can snapshot it directly.
-    (mkIf (config.programs.zsh.enable && cfg.aliases != { }) {
+    (mkIf (cfg.enableZshIntegration && cfg.aliases != { }) {
       programs.zsh.initContent = lib.mkOrder priority (
         lib.concatMapStringsSep "\n" (n: ''
           source ${mkOverlay "zsh" n cfg.aliases.${n}}
