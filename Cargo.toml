@@ -45,7 +45,7 @@ figment = { version = "0.10", features = ["toml"] }
 flexi_logger = { version = "0.31", default-features = false, features = [
   "colors",
 ] }
-gix = { version = "0.85", default-features = false, features = [
+gix = { version = "0.86", default-features = false, features = [
   "max-performance-safe",
   "comfort",
   "basic",
@@ -63,7 +63,7 @@ schemars = { version = "1", optional = true }
 secrecy = { version = "0.10", features = ["serde"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-noyalib = "0.0.15"
+noyalib = "0.0.16"
 shell-words = "1"
 tempfile = "3"
 thiserror = "2"
