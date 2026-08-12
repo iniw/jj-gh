@@ -31,7 +31,7 @@ jobs:
       matrix:
         target: ${{ fromJSON(needs.discover_checks.outputs.targets) }}
     steps:
-      - uses: wimpysworld/nothing-but-nix@main
+      - uses: wimpysworld/nothing-but-nix@v10
       - uses: actions/checkout@v7
       - uses: cachix/install-nix-action@v31
         with:
@@ -60,7 +60,7 @@ jobs:
     runs-on: ubuntu-latest
     if: ${{ github.event_name != 'pull_request' }}
     steps:
-      - uses: wimpysworld/nothing-but-nix@main
+      - uses: wimpysworld/nothing-but-nix@v10
       - uses: actions/checkout@v7
       - uses: cachix/install-nix-action@v31
         with:
@@ -86,11 +86,11 @@ jobs:
       group: release-plz
       cancel-in-progress: false
     steps:
-      - uses: wimpysworld/nothing-but-nix@main
+      - uses: wimpysworld/nothing-but-nix@v10
       - uses: actions/checkout@v7
         with:
           fetch-depth: 0
-          token: ${{ secrets.RELEASE_PLZ_GITHUB_TOKEN }}
+          token: ${{ secrets.GH_PAT_TOKEN }}
       - uses: cachix/install-nix-action@v31
         with:
           extra_nix_config: |
@@ -103,4 +103,17 @@ jobs:
           extraPullNames: nix-community
       - run: nix run .#release
         env:
-          GITHUB_TOKEN: ${{ secrets.RELEASE_PLZ_GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GH_PAT_TOKEN }}
+  dependabot-auto-merge:
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: write
+      contents: write
+    if: ${{ github.event.pull_request.user.login == 'dependabot[bot]' && github.event_name == 'pull_request' }}
+    steps:
+      - run: |
+          gh pr review --approve "$PR_URL"
+          gh pr merge --squash --auto "$PR_URL"
+        env:
+          PR_URL: ${{ github.event.pull_request.html_url }}
+          GITHUB_TOKEN: ${{ secrets.GH_PAT_TOKEN }}
