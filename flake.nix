@@ -59,7 +59,12 @@
           nativeBuildInputs = pkgs.lib.optionals pkgs.stdenv.isLinux [ pkgs.pkg-config ];
         };
         cargoArtifacts = craneLib.buildDepsOnly commonArgs;
-        treefmtEval = treefmt-nix.lib.evalModule pkgs (import ./nix/treefmt.nix { inherit rustToolchain; });
+        treefmtEval = treefmt-nix.lib.evalModule pkgs (
+          import ./nix/treefmt.nix {
+            inherit pkgs;
+            inherit rustToolchain;
+          }
+        );
         packageSet = import ./nix/pkgs {
           inherit
             pkgs

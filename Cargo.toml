@@ -1,22 +1,22 @@
 [package]
-description = "`jj` tools for working with GitHub PRs from your terminal"
-edition = "2024"
-license = "MIT"
 name = "jj-gh"
-repository = "https://github.com/mrjones2014/jj-gh"
 version = "0.2.10"
+edition = "2024"
+description = "`jj` tools for working with GitHub PRs from your terminal"
+repository = "https://github.com/mrjones2014/jj-gh"
+license = "MIT"
 include = [
-  "/src/**/*.rs",
-  "/src/**/*.gql",
-  "/src/gh/github.graphql",
-  "/Cargo.toml",
   "/Cargo.lock",
-  "/README.md",
+  "/Cargo.toml",
   "/LICENSE",
+  "/README.md",
   # this isn't technically needed for the rust crate,
   # but I want release-plz to include changes to it
   # in the CHANGELOG.md
   "/nix/hm-module.nix",
+  "/src/**/*.gql",
+  "/src/**/*.rs",
+  "/src/gh/github.graphql",
 ]
 
 [workspace]
@@ -30,9 +30,6 @@ members = [
 [workspace.dependencies]
 clap = "4"
 
-[features]
-schema-validation = ["dep:schemars"]
-
 [dependencies]
 anstyle = "1"
 anyhow = "1"
@@ -40,37 +37,40 @@ clap = { workspace = true, features = ["derive", "wrap_help"] }
 clap_complete = "4"
 clap_complete_nushell = "4"
 crossterm = "0.29"
-futures = "0.3"
 figment = { version = "0.10", features = ["toml"] }
 flexi_logger = { version = "0.31", default-features = false, features = [
   "colors",
 ] }
+futures = "0.3"
 gix = { version = "0.86", default-features = false, features = [
-  "max-performance-safe",
-  "comfort",
   "basic",
-  "blocking-network-client",
   "blocking-http-transport-reqwest-native-tls",
+  "blocking-network-client",
+  "comfort",
   "credentials",
+  "max-performance-safe",
   "sha1",
 ] }
 graphql_client = "0.16"
 http = "1"
 jj-gh-config-derive = { path = "tools/jj-gh-config-derive", version = "0.1.3" }
 log = "0.4"
+# see: https://github.com/dependabot/dependabot-core/issues/14196
+noyalib = "0.0"
 octocrab = "0.54"
 schemars = { version = "1", optional = true }
 secrecy = { version = "0.10", features = ["serde"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-# see: https://github.com/dependabot/dependabot-core/issues/14196
-noyalib = "0.0"
 shell-words = "1"
 tempfile = "3"
 thiserror = "2"
-tokio = { version = "1", features = ["macros", "rt", "process", "time"] }
+tokio = { version = "1", features = ["macros", "process", "rt", "time"] }
 toml = "1"
 url = "2"
+
+[features]
+schema-validation = ["dep:schemars"]
 
 [lints.clippy]
 allow_attributes = "deny"
