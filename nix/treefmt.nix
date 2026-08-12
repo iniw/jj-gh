@@ -1,4 +1,4 @@
-{ rustToolchain }:
+{ pkgs, rustToolchain }:
 {
   projectRootFile = "flake.nix";
   programs = {
@@ -19,5 +19,13 @@
     yamlfmt.enable = true;
     nixfmt.enable = true;
     actionlint.enable = true;
+  };
+  settings.formatter.tombi = {
+    command = "${pkgs.tombi}/bin/tombi";
+    options = [
+      "format"
+      "--offline"
+    ];
+    includes = [ "*.toml" ];
   };
 }
