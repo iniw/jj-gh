@@ -19,7 +19,7 @@ jobs:
         id: create-pr
         uses: peter-evans/create-pull-request@v8
         with:
-          commit-message: "chore(dpes): update GitHub GraphQL schema"
+          commit-message: "chore(deps): update GitHub GraphQL schema"
           title: "chore(deps): update GitHub GraphQL schema"
           branch: "automation/update-graphql-schema"
       - name: Enable PR auto-merge on CI success
