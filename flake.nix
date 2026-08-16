@@ -50,13 +50,13 @@
           inherit src;
           strictDeps = true;
           buildInputs =
-            (pkgs.lib.optionals pkgs.stdenv.isDarwin [
+            (pkgs.lib.optionals pkgs.stdenv.hostPlatform.isDarwin [
               pkgs.libiconv
             ])
-            ++ (pkgs.lib.optionals pkgs.stdenv.isLinux [
+            ++ (pkgs.lib.optionals pkgs.stdenv.hostPlatform.isLinux [
               pkgs.openssl
             ]);
-          nativeBuildInputs = pkgs.lib.optionals pkgs.stdenv.isLinux [ pkgs.pkg-config ];
+          nativeBuildInputs = pkgs.lib.optionals pkgs.stdenv.hostPlatform.isLinux [ pkgs.pkg-config ];
         };
         cargoArtifacts = craneLib.buildDepsOnly commonArgs;
         treefmtEval = treefmt-nix.lib.evalModule pkgs (
