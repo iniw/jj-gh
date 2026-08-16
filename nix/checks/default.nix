@@ -36,7 +36,7 @@ checks
 // {
   inherit jj-gh;
 }
-// (pkgs.lib.optionalAttrs pkgs.stdenv.isLinux {
+// (pkgs.lib.optionalAttrs pkgs.stdenv.hostPlatform.isLinux {
   # so that the patched version gets cached by CI
   inherit release-plz-patched;
 })
