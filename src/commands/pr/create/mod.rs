@@ -202,17 +202,12 @@ pub async fn run(model: &impl Model, args: &CreateArgs) -> Result<()> {
         }
     }
 
-    let ancestor = if base.cli().is_none() {
-        jj.stacked_ancestor_bookmark(rev).await?
-    } else {
-        None
-    };
     // Jujutsu gives us the revision for an automatic base. For an explicit or
     // configured base, find the revision on the target remote. A local bookmark
     // with the same name can point to a different revision.
     let (base_branch, local_base_rev) = if let Some(branch) = base.cli() {
         (branch.clone(), None)
-    } else if let Some(ancestor) = ancestor {
+    } else if let Some(ancestor) = jj.stacked_ancestor_bookmark(rev).await? {
         (ancestor.clone(), Some(ancestor))
     } else if let Some(trunk) = jj
         .trunk_branch()
