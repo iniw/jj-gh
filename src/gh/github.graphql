@@ -115,6 +115,15 @@ type AddBlockedByPayload {
     clientMutationId: String
     issue: Issue
 }
+input AddCloseIssueReferencesInput {
+    clientMutationId: String
+    issueId: ID! @possibleTypes(concreteTypes: ["Issue"])
+    pullRequestIds: [ID!]! @possibleTypes(concreteTypes: ["PullRequest"])
+}
+type AddCloseIssueReferencesPayload {
+    clientMutationId: String
+    issue: Issue
+}
 input AddCommentInput {
     body: String!
     clientMutationId: String
@@ -2057,7 +2066,7 @@ input CreateIssueFieldInput {
     description: String
     name: String!
     options: [IssueFieldSingleSelectOptionInput!]
-    ownerId: ID! @possibleTypes(concreteTypes: ["Organization"])
+    ownerId: ID!
     visibility: IssueFieldVisibility
 }
 type CreateIssueFieldPayload {
@@ -3468,8 +3477,19 @@ type Enterprise implements Node @docsCategory(name: "enterprise-admin") {
         last: Int
         orderBy: EnterpriseTeamOrder = {field: ID, direction: ASC}
         query: String
+        userLogins: [String!]
   ): EnterpriseTeamConnection!
     id: ID!
+    innersourceVulnerabilities(
+        after: String
+        before: String
+        ecosystem: SecurityAdvisoryEcosystem
+        first: Int
+        last: Int
+        orderBy: SecurityVulnerabilityOrder = {field: UPDATED_AT, direction: DESC}
+        package: String
+        severities: [SecurityAdvisorySeverity!]
+  ): SecurityVulnerabilityConnection!
     location: String
     members(
         after: String
@@ -4847,6 +4867,7 @@ type Issue implements Assignable &
     closedByPullRequestsReferences(
         after: String
         before: String
+        excludeUserLinked: Boolean = false
         first: Int
         includeClosedPrs: Boolean = false
         last: Int
@@ -5359,6 +5380,17 @@ type IssueFieldTextValue implements IssueFieldValueCommon & Node @docsCategory(n
 type IssueFieldTimelineOption @docsCategory(name: "issues") {
     color: String
     name: String!
+}
+input IssueFieldUpdateInput @docsCategory(name: "issues") {
+    fieldName: String!
+    operation: IssueFieldUpdateOperation!
+    value: String
+}
+enum IssueFieldUpdateOperation @docsCategory(name: "issues") {
+    ADD
+    CLEAR
+    REMOVE
+    SET
 }
 union IssueFieldValue @docsCategory(name: "issues") =
   | IssueFieldDateValue
@@ -6697,6 +6729,9 @@ type Mutation @docsCategory(name: "meta") {
     addBlockedBy(
         input: AddBlockedByInput!
   ): AddBlockedByPayload @docsCategory(name: "issues")
+    addCloseIssueReferences(
+        input: AddCloseIssueReferencesInput!
+  ): AddCloseIssueReferencesPayload @docsCategory(name: "issues")
     addComment(
         input: AddCommentInput!
   ): AddCommentPayload @docsCategory(name: "issues")
@@ -7174,6 +7209,9 @@ type Mutation @docsCategory(name: "meta") {
     removeBlockedBy(
         input: RemoveBlockedByInput!
   ): RemoveBlockedByPayload @docsCategory(name: "issues")
+    removeCloseIssueReferences(
+        input: RemoveCloseIssueReferencesInput!
+  ): RemoveCloseIssueReferencesPayload @docsCategory(name: "issues")
     removeEnterpriseAdmin(
         input: RemoveEnterpriseAdminInput!
   ): RemoveEnterpriseAdminPayload @docsCategory(name: "enterprise-admin")
@@ -10056,6 +10094,16 @@ type Organization implements Actor &
     estimatedNextSponsorsPayoutInCents: Int!
     hasSponsorsListing: Boolean!
     id: ID!
+    innersourceVulnerabilities(
+        after: String
+        before: String
+        ecosystem: SecurityAdvisoryEcosystem
+        first: Int
+        last: Int
+        orderBy: SecurityVulnerabilityOrder = {field: UPDATED_AT, direction: DESC}
+        package: String
+        severities: [SecurityAdvisorySeverity!]
+  ): SecurityVulnerabilityConnection!
     interactionAbility: RepositoryInteractionAbility
     ipAllowListEnabledSetting: IpAllowListEnabledSettingValue!
     ipAllowListEntries(
@@ -12380,7 +12428,6 @@ enum ProofOfPresenceRequirement @docsCategory(name: "enterprise-admin") {
     MFA
     NO_POLICY
     REAUTH
-    SECURITY_KEY
 }
 type PropertyTargetDefinition @docsCategory(name: "repos") {
     name: String!
@@ -12465,6 +12512,7 @@ type PullRequest implements Assignable &
     closingIssuesReferences(
         after: String
         before: String
+        excludeUserLinked: Boolean = false
         first: Int
         last: Int
         orderBy: IssueOrder
@@ -13047,6 +13095,11 @@ type PullRequestReviewThreadConnection {
 type PullRequestReviewThreadEdge {
     cursor: String!
     node: PullRequestReviewThread
+}
+enum PullRequestReviewThreadResolutionReason @docsCategory(name: "pulls") {
+    ADDRESSED
+    INVALID
+    WONT_FIX
 }
 enum PullRequestReviewThreadSubjectType @docsCategory(name: "pulls") {
     FILE
@@ -13847,6 +13900,15 @@ input RemoveBlockedByInput {
 }
 type RemoveBlockedByPayload {
     blockingIssue: Issue
+    clientMutationId: String
+    issue: Issue
+}
+input RemoveCloseIssueReferencesInput {
+    clientMutationId: String
+    issueId: ID! @possibleTypes(concreteTypes: ["Issue"])
+    pullRequestIds: [ID!]! @possibleTypes(concreteTypes: ["PullRequest"])
+}
+type RemoveCloseIssueReferencesPayload {
     clientMutationId: String
     issue: Issue
 }
@@ -16916,6 +16978,7 @@ type RerequestCheckSuitePayload {
 }
 input ResolveReviewThreadInput {
     clientMutationId: String
+    resolutionReason: PullRequestReviewThreadResolutionReason
     threadId: ID! @possibleTypes(concreteTypes: ["PullRequestReviewThread"])
 }
 type ResolveReviewThreadPayload {
@@ -19674,6 +19737,7 @@ input UpdateIssueInput {
     body: String
     clientMutationId: String
     id: ID! @possibleTypes(concreteTypes: ["Issue"])
+    issueFieldUpdates: [IssueFieldUpdateInput!]
     issueType: IssueTypeUpdateInput
     issueTypeId: ID
     labelIds: [ID!] @possibleTypes(concreteTypes: ["Label"])
