@@ -115,6 +115,15 @@ type AddBlockedByPayload {
     clientMutationId: String
     issue: Issue
 }
+input AddCloseIssueReferencesInput {
+    clientMutationId: String
+    issueId: ID! @possibleTypes(concreteTypes: ["Issue"])
+    pullRequestIds: [ID!]! @possibleTypes(concreteTypes: ["PullRequest"])
+}
+type AddCloseIssueReferencesPayload {
+    clientMutationId: String
+    issue: Issue
+}
 input AddCommentInput {
     body: String!
     clientMutationId: String
@@ -304,6 +313,16 @@ type AddReactionPayload {
     reaction: Reaction
     reactionGroups: [ReactionGroup!]
     subject: Reactable
+}
+input AddRelatesToInput {
+    clientMutationId: String
+    issueId: ID! @possibleTypes(concreteTypes: ["Issue"])
+    relatedIssueId: ID! @possibleTypes(concreteTypes: ["Issue"])
+}
+type AddRelatesToPayload {
+    clientMutationId: String
+    issue: Issue
+    relatedIssue: Issue
 }
 input AddStarInput {
     clientMutationId: String
@@ -1274,6 +1293,14 @@ type ClosedEvent implements Node & UniformResourceLocatable @docsCategory(name: 
     url: URI!
 }
 union Closer @docsCategory(name: "issues") = Commit | ProjectV2 | PullRequest
+type CodeCoverageParameters {
+    maxCoverageDrop: Float
+    minimumCoverage: Float
+}
+input CodeCoverageParametersInput {
+    maxCoverageDrop: Float
+    minimumCoverage: Float
+}
 type CodeOfConduct implements Node @docsCategory(name: "meta") {
     body: String
     id: ID!
@@ -1281,6 +1308,18 @@ type CodeOfConduct implements Node @docsCategory(name: "meta") {
     name: String!
     resourcePath: URI
     url: URI
+}
+type CodeQualityParameters @docsCategory(name: "code-scanning") {
+    severity: CodeQualitySeverity!
+}
+input CodeQualityParametersInput @docsCategory(name: "code-scanning") {
+    severity: CodeQualitySeverity!
+}
+enum CodeQualitySeverity @docsCategory(name: "code-scanning") {
+    ALL
+    ERRORS
+    NOTES
+    WARNINGS
 }
 type CodeScanningParameters @docsCategory(name: "repos") {
     codeScanningTools: [CodeScanningTool!]!
@@ -2057,7 +2096,7 @@ input CreateIssueFieldInput {
     description: String
     name: String!
     options: [IssueFieldSingleSelectOptionInput!]
-    ownerId: ID! @possibleTypes(concreteTypes: ["Organization"])
+    ownerId: ID!
     visibility: IssueFieldVisibility
 }
 type CreateIssueFieldPayload {
@@ -3468,8 +3507,19 @@ type Enterprise implements Node @docsCategory(name: "enterprise-admin") {
         last: Int
         orderBy: EnterpriseTeamOrder = {field: ID, direction: ASC}
         query: String
+        userLogins: [String!]
   ): EnterpriseTeamConnection!
     id: ID!
+    innersourceVulnerabilities(
+        after: String
+        before: String
+        ecosystem: SecurityAdvisoryEcosystem
+        first: Int
+        last: Int
+        orderBy: SecurityVulnerabilityOrder = {field: UPDATED_AT, direction: DESC}
+        package: String
+        severities: [SecurityAdvisorySeverity!]
+  ): SecurityVulnerabilityConnection!
     location: String
     members(
         after: String
@@ -4847,6 +4897,7 @@ type Issue implements Assignable &
     closedByPullRequestsReferences(
         after: String
         before: String
+        excludeUserLinked: Boolean = false
         first: Int
         includeClosedPrs: Boolean = false
         last: Int
@@ -4865,10 +4916,6 @@ type Issue implements Assignable &
     databaseId: Int
     duplicateOf: Issue
     editor: Actor
-    eventRationales: [IssueEventRationale!]!
-    @deprecated(
-      reason: "Use the `intent` field on individual timeline events instead. This field is being removed and now always returns an empty list."
-    )
     fullDatabaseId: BigInt
     hovercard(
         includeNotificationContexts: Boolean = true
@@ -4950,6 +4997,13 @@ type Issue implements Assignable &
         last: Int
         orderBy: ReactionOrder
   ): ReactionConnection!
+    relatesTo(
+        after: String
+        before: String
+        first: Int
+        last: Int
+        orderBy: IssueRelatesToOrder = {field: RELATES_TO_ADDED_AT, direction: DESC}
+  ): IssueConnection!
     repository: Repository!
     resourcePath: URI!
     state: IssueState!
@@ -5166,22 +5220,6 @@ enum IssueEventConfidenceLevel @docsCategory(name: "issues") {
     LOW
     MEDIUM
 }
-type IssueEventRationale @docsCategory(name: "issues") {
-    actor: Actor
-    createdAt: DateTime!
-    issueEvent: IssueEventWithRationale
-    rationale: String!
-}
-union IssueEventWithRationale @docsCategory(name: "issues") =
-  | ClosedEvent
-  | IssueFieldAddedEvent
-  | IssueFieldChangedEvent
-  | IssueFieldRemovedEvent
-  | IssueTypeAddedEvent
-  | IssueTypeChangedEvent
-  | IssueTypeRemovedEvent
-  | LabeledEvent
-  | UnlabeledEvent
 type IssueFieldAddedEvent implements Node @docsCategory(name: "issues") {
     actor: Actor
     color: String
@@ -5190,8 +5228,6 @@ type IssueFieldAddedEvent implements Node @docsCategory(name: "issues") {
     intent: IssueUpdateIntent
     issueField: IssueFields
     options: [IssueFieldTimelineOption!]
-    rationale: IssueEventRationale
-    @deprecated(reason: "Use `intent` instead. This field is being removed and now always returns null.")
     value: String
 }
 type IssueFieldChangedEvent implements Node @docsCategory(name: "issues") {
@@ -5206,8 +5242,6 @@ type IssueFieldChangedEvent implements Node @docsCategory(name: "issues") {
     previousColor: String
     previousOptions: [IssueFieldTimelineOption!]
     previousValue: String
-    rationale: IssueEventRationale
-    @deprecated(reason: "Use `intent` instead. This field is being removed and now always returns null.")
 }
 interface IssueFieldCommon @docsCategory(name: "issues") {
     createdAt: DateTime!
@@ -5295,8 +5329,6 @@ type IssueFieldRemovedEvent implements Node @docsCategory(name: "issues") {
     intent: IssueUpdateIntent
     issueField: IssueFields
     options: [IssueFieldTimelineOption!]
-    rationale: IssueEventRationale
-    @deprecated(reason: "Use `intent` instead. This field is being removed and now always returns null.")
 }
 type IssueFieldSingleSelect implements IssueFieldCommon & Node @docsCategory(name: "issues") {
     createdAt: DateTime!
@@ -5359,6 +5391,17 @@ type IssueFieldTextValue implements IssueFieldValueCommon & Node @docsCategory(n
 type IssueFieldTimelineOption @docsCategory(name: "issues") {
     color: String
     name: String!
+}
+input IssueFieldUpdateInput @docsCategory(name: "issues") {
+    fieldName: String!
+    operation: IssueFieldUpdateOperation!
+    value: String
+}
+enum IssueFieldUpdateOperation @docsCategory(name: "issues") {
+    ADD
+    CLEAR
+    REMOVE
+    SET
 }
 union IssueFieldValue @docsCategory(name: "issues") =
   | IssueFieldDateValue
@@ -5432,6 +5475,14 @@ enum IssueOrderField @docsCategory(name: "issues") {
     COMMENTS
     CREATED_AT
     UPDATED_AT
+}
+input IssueRelatesToOrder @docsCategory(name: "issues") {
+    direction: OrderDirection!
+    field: IssueRelatesToOrderField!
+}
+enum IssueRelatesToOrderField @docsCategory(name: "issues") {
+    CREATED_AT
+    RELATES_TO_ADDED_AT
 }
 enum IssueSearchType @docsCategory(name: "issues") {
     HYBRID
@@ -5654,8 +5705,6 @@ type IssueTypeAddedEvent implements Node @docsCategory(name: "issues") {
     id: ID!
     intent: IssueUpdateIntent
     issueType: IssueType
-    rationale: IssueEventRationale
-    @deprecated(reason: "Use `intent` instead. This field is being removed and now always returns null.")
 }
 type IssueTypeChangedEvent implements Node @docsCategory(name: "issues") {
     actor: Actor
@@ -5664,8 +5713,6 @@ type IssueTypeChangedEvent implements Node @docsCategory(name: "issues") {
     intent: IssueUpdateIntent
     issueType: IssueType
     prevIssueType: IssueType
-    rationale: IssueEventRationale
-    @deprecated(reason: "Use `intent` instead. This field is being removed and now always returns null.")
 }
 enum IssueTypeColor @docsCategory(name: "issues") {
     BLUE
@@ -5701,8 +5748,6 @@ type IssueTypeRemovedEvent implements Node @docsCategory(name: "issues") {
     id: ID!
     intent: IssueUpdateIntent
     issueType: IssueType
-    rationale: IssueEventRationale
-    @deprecated(reason: "Use `intent` instead. This field is being removed and now always returns null.")
 }
 input IssueTypeUpdateInput @docsCategory(name: "issues") {
     confidence: IssueEventConfidenceLevel
@@ -5798,8 +5843,6 @@ type LabeledEvent implements Node @docsCategory(name: "issues") {
     intent: IssueUpdateIntent
     label: Label!
     labelable: Labelable!
-    rationale: IssueEventRationale
-    @deprecated(reason: "Use `intent` instead. This field is being removed and now always returns null.")
 }
 type Language implements Node @docsCategory(name: "repos") {
     color: String
@@ -6697,6 +6740,9 @@ type Mutation @docsCategory(name: "meta") {
     addBlockedBy(
         input: AddBlockedByInput!
   ): AddBlockedByPayload @docsCategory(name: "issues")
+    addCloseIssueReferences(
+        input: AddCloseIssueReferencesInput!
+  ): AddCloseIssueReferencesPayload @docsCategory(name: "issues")
     addComment(
         input: AddCommentInput!
   ): AddCommentPayload @docsCategory(name: "issues")
@@ -6753,6 +6799,9 @@ type Mutation @docsCategory(name: "meta") {
     addReaction(
         input: AddReactionInput!
   ): AddReactionPayload @docsCategory(name: "reactions")
+    addRelatesTo(
+        input: AddRelatesToInput!
+  ): AddRelatesToPayload @docsCategory(name: "issues")
     addStar(
         input: AddStarInput!
   ): AddStarPayload @docsCategory(name: "activity")
@@ -7174,6 +7223,9 @@ type Mutation @docsCategory(name: "meta") {
     removeBlockedBy(
         input: RemoveBlockedByInput!
   ): RemoveBlockedByPayload @docsCategory(name: "issues")
+    removeCloseIssueReferences(
+        input: RemoveCloseIssueReferencesInput!
+  ): RemoveCloseIssueReferencesPayload @docsCategory(name: "issues")
     removeEnterpriseAdmin(
         input: RemoveEnterpriseAdminInput!
   ): RemoveEnterpriseAdminPayload @docsCategory(name: "enterprise-admin")
@@ -7201,6 +7253,9 @@ type Mutation @docsCategory(name: "meta") {
     removeReaction(
         input: RemoveReactionInput!
   ): RemoveReactionPayload @docsCategory(name: "reactions")
+    removeRelatesTo(
+        input: RemoveRelatesToInput!
+  ): RemoveRelatesToPayload @docsCategory(name: "issues")
     removeStar(
         input: RemoveStarInput!
   ): RemoveStarPayload @docsCategory(name: "activity")
@@ -7400,9 +7455,6 @@ type Mutation @docsCategory(name: "meta") {
     updateEnterpriseProfile(
         input: UpdateEnterpriseProfileInput!
   ): UpdateEnterpriseProfilePayload @docsCategory(name: "enterprise-admin")
-    updateEnterpriseProofOfPresenceRequiredSetting(
-        input: UpdateEnterpriseProofOfPresenceRequiredSettingInput!
-  ): UpdateEnterpriseProofOfPresenceRequiredSettingPayload @docsCategory(name: "enterprise-admin")
     updateEnterpriseRepositoryProjectsSetting(
         input: UpdateEnterpriseRepositoryProjectsSettingInput!
   ): UpdateEnterpriseRepositoryProjectsSettingPayload @docsCategory(name: "enterprise-admin")
@@ -10056,6 +10108,16 @@ type Organization implements Actor &
     estimatedNextSponsorsPayoutInCents: Int!
     hasSponsorsListing: Boolean!
     id: ID!
+    innersourceVulnerabilities(
+        after: String
+        before: String
+        ecosystem: SecurityAdvisoryEcosystem
+        first: Int
+        last: Int
+        orderBy: SecurityVulnerabilityOrder = {field: UPDATED_AT, direction: DESC}
+        package: String
+        severities: [SecurityAdvisorySeverity!]
+  ): SecurityVulnerabilityConnection!
     interactionAbility: RepositoryInteractionAbility
     ipAllowListEnabledSetting: IpAllowListEnabledSettingValue!
     ipAllowListEntries(
@@ -10530,6 +10592,7 @@ enum OrganizationInvitationRole @docsCategory(name: "orgs") {
     REINSTATE
 }
 enum OrganizationInvitationSource @docsCategory(name: "orgs") {
+    ENTERPRISE_ORGANIZATION_CREATION
     MEMBER
     SCIM
     UNKNOWN
@@ -10806,24 +10869,27 @@ enum PatchStatus @docsCategory(name: "pulls") {
     MODIFIED
     RENAMED
 }
-type PendingAssigneeSuggestion @docsCategory(name: "issues") {
+type PendingAssigneeSuggestion implements Node @docsCategory(name: "issues") {
     actor: Actor
     assignee: Assignee
     createdAt: DateTime!
+    id: ID!
     rationale: String
     updatedAt: DateTime
 }
-type PendingCloseSuggestion @docsCategory(name: "issues") {
+type PendingCloseSuggestion implements Node @docsCategory(name: "issues") {
     actor: Actor
     createdAt: DateTime!
     duplicateOf: IssueOrPullRequest
+    id: ID!
     rationale: String
     stateReason: IssueStateReason
     updatedAt: DateTime
 }
-type PendingFieldSuggestion @docsCategory(name: "issues") {
+type PendingFieldSuggestion implements Node @docsCategory(name: "issues") {
     actor: Actor
     createdAt: DateTime!
+    id: ID!
     issueField: IssueFields
     rationale: String
     suggestedValue: String
@@ -10849,16 +10915,18 @@ input PendingIssueSuggestionRef @docsCategory(name: "issues") {
     kind: PendingIssueSuggestionKind!
     labelId: ID
 }
-type PendingLabelSuggestion @docsCategory(name: "issues") {
+type PendingLabelSuggestion implements Node @docsCategory(name: "issues") {
     actor: Actor
     createdAt: DateTime!
+    id: ID!
     label: Label
     rationale: String
     updatedAt: DateTime
 }
-type PendingTypeSuggestion @docsCategory(name: "issues") {
+type PendingTypeSuggestion implements Node @docsCategory(name: "issues") {
     actor: Actor
     createdAt: DateTime!
+    id: ID!
     issueType: IssueType
     rationale: String
     updatedAt: DateTime
@@ -11993,6 +12061,7 @@ enum ProjectV2ItemType @docsCategory(name: "projects") {
 }
 input ProjectV2Iteration @docsCategory(name: "projects") {
     duration: Int!
+    id: String
     startDate: Date!
     title: String!
 }
@@ -12376,12 +12445,6 @@ type PromoteRepositoryCustomPropertyPayload {
     clientMutationId: String
     repositoryCustomProperty: RepositoryCustomProperty
 }
-enum ProofOfPresenceRequirement @docsCategory(name: "enterprise-admin") {
-    MFA
-    NO_POLICY
-    REAUTH
-    SECURITY_KEY
-}
 type PropertyTargetDefinition @docsCategory(name: "repos") {
     name: String!
     propertyValues: [String!]!
@@ -12465,6 +12528,7 @@ type PullRequest implements Assignable &
     closingIssuesReferences(
         after: String
         before: String
+        excludeUserLinked: Boolean = false
         first: Int
         last: Int
         orderBy: IssueOrder
@@ -13048,6 +13112,11 @@ type PullRequestReviewThreadEdge {
     cursor: String!
     node: PullRequestReviewThread
 }
+enum PullRequestReviewThreadResolutionReason @docsCategory(name: "pulls") {
+    ADDRESSED
+    INVALID
+    WONT_FIX
+}
 enum PullRequestReviewThreadSubjectType @docsCategory(name: "pulls") {
     FILE
     LINE
@@ -13260,6 +13329,7 @@ enum PullRequestTimelineItemsItemType {
     ADDED_TO_MERGE_QUEUE_EVENT
     ADDED_TO_PROJECT_EVENT
     ADDED_TO_PROJECT_V2_EVENT
+    ADDED_TO_STACK_EVENT
     ARCHIVED_EVENT
     ASSIGNED_EVENT
     AUTOMATIC_BASE_CHANGE_FAILED_EVENT
@@ -13320,6 +13390,7 @@ enum PullRequestTimelineItemsItemType {
     REMOVED_FROM_MERGE_QUEUE_EVENT
     REMOVED_FROM_PROJECT_EVENT
     REMOVED_FROM_PROJECT_V2_EVENT
+    REMOVED_FROM_STACK_EVENT
     RENAMED_TITLE_EVENT
     REOPENED_EVENT
     REVIEW_DISMISSED_EVENT
@@ -13850,6 +13921,15 @@ type RemoveBlockedByPayload {
     clientMutationId: String
     issue: Issue
 }
+input RemoveCloseIssueReferencesInput {
+    clientMutationId: String
+    issueId: ID! @possibleTypes(concreteTypes: ["Issue"])
+    pullRequestIds: [ID!]! @possibleTypes(concreteTypes: ["PullRequest"])
+}
+type RemoveCloseIssueReferencesPayload {
+    clientMutationId: String
+    issue: Issue
+}
 input RemoveEnterpriseAdminInput {
     clientMutationId: String
     enterpriseId: ID! @possibleTypes(concreteTypes: ["Enterprise"])
@@ -13952,6 +14032,16 @@ type RemoveReactionPayload {
     reaction: Reaction
     reactionGroups: [ReactionGroup!]
     subject: Reactable
+}
+input RemoveRelatesToInput {
+    clientMutationId: String
+    issueId: ID! @possibleTypes(concreteTypes: ["Issue"])
+    relatedIssueId: ID! @possibleTypes(concreteTypes: ["Issue"])
+}
+type RemoveRelatesToPayload {
+    clientMutationId: String
+    issue: Issue
+    relatedIssue: Issue
 }
 input RemoveStarInput {
     clientMutationId: String
@@ -16407,6 +16497,7 @@ enum RepositoryPermission @docsCategory(name: "repos") {
     MAINTAIN
     READ
     TRIAGE
+    TRIAGE_PLUS
     WRITE
 }
 type RepositoryPlanFeatures @docsCategory(name: "repos") {
@@ -16475,6 +16566,8 @@ enum RepositoryRuleOrderField @docsCategory(name: "repos") {
 enum RepositoryRuleType {
     AUTHORIZATION
     BRANCH_NAME_PATTERN
+    CODE_COVERAGE
+    CODE_QUALITY
     CODE_SCANNING
     COMMITTER_EMAIL_PATTERN
     COMMIT_AUTHOR_EMAIL_PATTERN
@@ -16536,6 +16629,7 @@ type RepositoryRulesetBypassActor implements Node @docsCategory(name: "repos") {
     deployKey: Boolean!
     enterpriseOwner: Boolean!
     enterpriseRole: Boolean!
+    enterpriseRoleDatabaseId: BigInt
     id: ID!
     organizationAdmin: Boolean!
     repositoryRoleDatabaseId: Int
@@ -16562,7 +16656,8 @@ input RepositoryRulesetBypassActorInput @docsCategory(name: "repos") {
     bypassMode: RepositoryRulesetBypassActorBypassMode!
     deployKey: Boolean
     enterpriseOwner: Boolean
-    enterpriseRole: Boolean
+    enterpriseRole: Boolean @deprecated(reason: "Use enterpriseRoleDatabaseId.")
+    enterpriseRoleDatabaseId: BigInt
     organizationAdmin: Boolean
     repositoryRoleDatabaseId: Int
 }
@@ -16916,6 +17011,7 @@ type RerequestCheckSuitePayload {
 }
 input ResolveReviewThreadInput {
     clientMutationId: String
+    resolutionReason: PullRequestReviewThreadResolutionReason
     threadId: ID! @possibleTypes(concreteTypes: ["PullRequestReviewThread"])
 }
 type ResolveReviewThreadPayload {
@@ -17051,6 +17147,8 @@ enum RuleEnforcement @docsCategory(name: "repos") {
 }
 union RuleParameters =
   | BranchNamePatternParameters
+  | CodeCoverageParameters
+  | CodeQualityParameters
   | CodeScanningParameters
   | CommitAuthorEmailPatternParameters
   | CommitMessagePatternParameters
@@ -17069,6 +17167,8 @@ union RuleParameters =
   | WorkflowsParameters
 input RuleParametersInput {
     branchNamePattern: BranchNamePatternParametersInput
+    codeCoverage: CodeCoverageParametersInput
+    codeQuality: CodeQualityParametersInput
     codeScanning: CodeScanningParametersInput
     commitAuthorEmailPattern: CommitAuthorEmailPatternParametersInput
     commitMessagePattern: CommitMessagePatternParametersInput
@@ -19143,8 +19243,6 @@ type UnlabeledEvent implements Node @docsCategory(name: "issues") {
     intent: IssueUpdateIntent
     label: Label!
     labelable: Labelable!
-    rationale: IssueEventRationale
-    @deprecated(reason: "Use `intent` instead. This field is being removed and now always returns null.")
 }
 input UnlinkProjectV2FromRepositoryInput {
     clientMutationId: String
@@ -19533,16 +19631,6 @@ type UpdateEnterpriseProfilePayload {
     clientMutationId: String
     enterprise: Enterprise
 }
-input UpdateEnterpriseProofOfPresenceRequiredSettingInput {
-    clientMutationId: String
-    enterpriseId: ID! @possibleTypes(concreteTypes: ["Enterprise"])
-    settingValue: ProofOfPresenceRequirement!
-}
-type UpdateEnterpriseProofOfPresenceRequiredSettingPayload {
-    clientMutationId: String
-    enterprise: Enterprise
-    message: String
-}
 input UpdateEnterpriseRepositoryProjectsSettingInput {
     clientMutationId: String
     enterpriseId: ID! @possibleTypes(concreteTypes: ["Enterprise"])
@@ -19674,6 +19762,7 @@ input UpdateIssueInput {
     body: String
     clientMutationId: String
     id: ID! @possibleTypes(concreteTypes: ["Issue"])
+    issueFieldUpdates: [IssueFieldUpdateInput!]
     issueType: IssueTypeUpdateInput
     issueTypeId: ID
     labelIds: [ID!] @possibleTypes(concreteTypes: ["Label"])
