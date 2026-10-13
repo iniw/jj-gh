@@ -3,9 +3,10 @@
 //! The local graph is the source of truth; this command never rewrites it.
 //! Reconciling means three writes, in order:
 //!
-//! 1. push bookmarks whose remote target has fallen behind the local one, so
-//!    GitHub's head commits match;
-//! 2. move each PR's base ref onto its closest stacked ancestor bookmark;
+//! 1. move each PR's base ref onto its closest stacked ancestor bookmark;
+//! 2. push bookmarks whose remote target has fallen behind the local one, so
+//!    GitHub's head commits match (after the base moves, so the transient
+//!    diff of a retargeted PR stays bounded, see [`apply`]);
 //! 3. create, reshape, or dissolve GitHub stacks so they match the local
 //!    chains.
 //!
@@ -321,10 +322,29 @@ async fn build_plan(jj: &impl Jj, args: &StackArgs, ctx: &Gathered) -> Result<Pl
         .cloned()
         .collect::<Vec<Vec<u64>>>();
 
-    // Only chain members need pushing: a stale head is what makes GitHub
-    // reject the stack. A lone PR's base can be retargeted without it.
+    // Push the stale head of every PR the plan touches: chain members,
+    // because a stale head is what makes GitHub reject the stack, and PRs
+    // being unstacked or retargeted, whose GitHub diff would keep showing
+    // commits from the old base until the head is pushed. PRs the plan
+    // leaves alone keep their remote head, stale or not.
     let pushes = if args.auto_push {
-        stale_pushes(jj, ctx, &ctx.shape.chains).await?
+        let candidates = ctx
+            .shape
+            .chains
+            .iter()
+            .flatten()
+            .copied()
+            .chain(unstack.iter().copied())
+            .chain(bases.iter().map(|base| base.pr_number))
+            .collect::<Vec<u64>>();
+        stale_pushes(
+            jj,
+            &ctx.pr_details,
+            &ctx.bookmarks,
+            &ctx.remote_name,
+            &candidates,
+        )
+        .await?
     } else {
         Vec::new()
     };
@@ -386,25 +406,29 @@ fn prs_to_unstack(
         .collect()
 }
 
-/// Chain-member bookmarks whose remote target is not the local one, in
-/// bottom-to-top order.
-async fn stale_pushes(jj: &impl Jj, ctx: &Gathered, chains: &[Vec<u64>]) -> Result<Vec<PushPlan>> {
-    let head_ref_of = ctx
-        .pr_details
+/// Bookmarks of the given PRs whose remote target is not the local one, in
+/// the order the PR numbers are given (callers pass chain members first,
+/// bottom to top). Duplicate numbers are deduplicated.
+async fn stale_pushes(
+    jj: &impl Jj,
+    pr_details: &[PrDetails],
+    bookmarks: &[PushedBookmark],
+    remote_name: &str,
+    pr_numbers: &[u64],
+) -> Result<Vec<PushPlan>> {
+    let head_ref_of = pr_details
         .iter()
         .map(|pr| (pr.number, pr.head_ref.as_str()))
         .collect::<HashMap<u64, &str>>();
-    let local_target = ctx
-        .bookmarks
+    let local_target = bookmarks
         .iter()
         .map(|b| (b.name.as_str(), b.local_commit_id.as_str()))
         .collect::<HashMap<&str, &str>>();
 
     let mut seen = HashSet::<&str>::new();
     let mut pushes = Vec::new();
-    for bookmark in chains
+    for bookmark in pr_numbers
         .iter()
-        .flatten()
         .filter_map(|number| head_ref_of.get(number).copied())
     {
         let Some(local_commit_id) = local_target.get(bookmark).copied() else {
@@ -413,7 +437,7 @@ async fn stale_pushes(jj: &impl Jj, ctx: &Gathered, chains: &[Vec<u64>]) -> Resu
         if !seen.insert(bookmark) {
             continue;
         }
-        let remote_commit_id = jj.remote_bookmark_sha(bookmark, &ctx.remote_name).await?;
+        let remote_commit_id = jj.remote_bookmark_sha(bookmark, remote_name).await?;
         if remote_commit_id.as_deref() == Some(local_commit_id) {
             continue;
         }
@@ -604,8 +628,15 @@ fn print_pr_line(links: &PrLinks, number: u64, title: &str) {
     eprintln!("  {}", links.link(UI, number, &line));
 }
 
-/// Apply the plan. Push first so GitHub sees the right commits, then move the
-/// base refs, then reshape the stacks over them.
+/// Apply the plan. Unstack first so base refs can move, then move them, then
+/// push, then reshape the stacks over the result.
+///
+/// Pushing after the base moves keeps the transient PR diff bounded: GitHub
+/// diffs are three-dot, so a head rebased onto a newer trunk drags every
+/// trunk commit since the old merge base into the diff while the base ref
+/// still points at the old parent, and CODEOWNERS review requests fire on
+/// that inflated file set. With the base moved first, the stale head only
+/// shows the old base's commits until the push lands.
 async fn apply(model: &impl Model, ctx: Gathered, plan: Plan) -> Result<()> {
     let jj = model.jj();
     let gh = model.gh().await?;
@@ -617,18 +648,6 @@ async fn apply(model: &impl Model, ctx: Gathered, plan: Plan) -> Result<()> {
         ..
     } = ctx;
     let links = PrLinks::from_details(&pr_details);
-
-    // No spinner around the pushes: `jj git push` streams its own progress to
-    // the terminal, and a live spinner would fight it for the line.
-    for push in &plan.pushes {
-        jj.push(
-            &push.local_commit_id,
-            Some(&push.bookmark),
-            remote_name.clone(),
-        )
-        .await
-        .with_context(|| format!("pushing `{}` to `{remote_name}`", push.bookmark))?;
-    }
 
     // Unstack before anything else touches a base ref: GitHub rejects a
     // base-ref change on a PR that is in a stack. The stacks are rebuilt below.
@@ -687,6 +706,18 @@ async fn apply(model: &impl Model, ctx: Gathered, plan: Plan) -> Result<()> {
                 base.proposed_base
             );
         }
+    }
+
+    // No spinner around the pushes: `jj git push` streams its own progress to
+    // the terminal, and a live spinner would fight it for the line.
+    for push in &plan.pushes {
+        jj.push(
+            &push.local_commit_id,
+            Some(&push.bookmark),
+            remote_name.clone(),
+        )
+        .await
+        .with_context(|| format!("pushing `{}` to `{remote_name}`", push.bookmark))?;
     }
 
     if !plan.chains.is_empty() {
@@ -851,6 +882,8 @@ pub(crate) fn print_stack_results(links: &PrLinks, results: &[ChainResult]) {
 mod tests {
     use super::*;
     use crate::gh::StackPullRequest;
+    use crate::jj::CommitInfo;
+    use std::path::Path;
 
     fn stack(number: u64, prs: &[u64]) -> PullRequestStack {
         PullRequestStack {
@@ -887,6 +920,138 @@ mod tests {
 
     fn retargeting(numbers: &[u64]) -> HashSet<u64> {
         numbers.iter().copied().collect()
+    }
+
+    fn tracked(name: &str, local_commit_id: &str) -> PushedBookmark {
+        PushedBookmark {
+            name: name.into(),
+            local_commit_id: local_commit_id.into(),
+        }
+    }
+
+    /// Jj fake whose only implemented method is `remote_bookmark_sha`, backed
+    /// by a map from bookmark name to remote sha.
+    struct RemoteShaJj {
+        remote_sha: HashMap<String, Option<String>>,
+    }
+
+    impl RemoteShaJj {
+        fn new() -> Self {
+            Self {
+                remote_sha: HashMap::new(),
+            }
+        }
+
+        fn with_remote_sha(mut self, bookmark: &str, sha: Option<&str>) -> Self {
+            self.remote_sha
+                .insert(bookmark.to_string(), sha.map(ToString::to_string));
+            self
+        }
+    }
+
+    impl Jj for RemoteShaJj {
+        fn default_remote(&self) -> Result<Option<String>> {
+            unimplemented!()
+        }
+        fn remote_names(&self) -> Result<Vec<String>> {
+            unimplemented!()
+        }
+        async fn resolve_rev(&self, _rev: &str) -> Result<CommitInfo> {
+            unimplemented!()
+        }
+        fn remote_url(&self, _name: &str) -> Result<Option<String>> {
+            unimplemented!()
+        }
+        fn remote_bookmark_sha(
+            &self,
+            bookmark: &str,
+            _remote: &str,
+        ) -> impl Future<Output = Result<Option<String>>> {
+            std::future::ready(Ok(self.remote_sha.get(bookmark).cloned().flatten()))
+        }
+        async fn trunk_branch(&self) -> Result<Option<String>> {
+            unimplemented!()
+        }
+        async fn git_import(&self) -> Result<()> {
+            unimplemented!()
+        }
+        async fn stacked_ancestor_bookmark(&self, _rev: &str) -> Result<Option<String>> {
+            unimplemented!()
+        }
+        async fn first_commit_description(&self, _revset: &str) -> Result<String> {
+            unimplemented!()
+        }
+        async fn push(&self, _rev: &str, _bookmark: Option<&str>, _remote: String) -> Result<()> {
+            unimplemented!()
+        }
+        async fn pushed_bookmarks(&self, _remote: &str) -> Result<Vec<PushedBookmark>> {
+            unimplemented!()
+        }
+        async fn eval_template(
+            &self,
+            _revset: &str,
+            _template: &str,
+            _config_file: Option<&Path>,
+            _reversed: bool,
+            _color: bool,
+        ) -> Result<String> {
+            unimplemented!()
+        }
+        async fn diff(&self, _revset: &str) -> Result<String> {
+            unimplemented!()
+        }
+        async fn pr_diff(&self, _base_oid: &str, _head_oid: &str) -> Result<String> {
+            unimplemented!()
+        }
+    }
+
+    #[tokio::test]
+    async fn stale_pushes_covers_a_pr_outside_any_chain() {
+        // the stack's bottom merged or was abandoned, leaving a
+        // lone survivor. It is in no chain, but the plan unstacks and
+        // retargets it, so its stale head must be pushed too.
+        let prs = [pr(2, Some(11))];
+        let bookmarks = [tracked("branch-2", "local2")];
+        let jj = RemoteShaJj::new().with_remote_sha("branch-2", Some("remote2"));
+
+        let pushes = stale_pushes(&jj, &prs, &bookmarks, "origin", &[2])
+            .await
+            .unwrap();
+
+        assert_eq!(pushes.len(), 1);
+        assert_eq!(pushes[0].bookmark, "branch-2");
+        assert_eq!(pushes[0].local_commit_id, "local2");
+        assert_eq!(pushes[0].remote_commit_id.as_deref(), Some("remote2"));
+    }
+
+    #[tokio::test]
+    async fn stale_pushes_skips_a_pr_whose_remote_matches() {
+        let prs = [pr(2, None)];
+        let bookmarks = [tracked("branch-2", "same")];
+        let jj = RemoteShaJj::new().with_remote_sha("branch-2", Some("same"));
+
+        let pushes = stale_pushes(&jj, &prs, &bookmarks, "origin", &[2])
+            .await
+            .unwrap();
+
+        assert!(pushes.is_empty());
+    }
+
+    #[tokio::test]
+    async fn stale_pushes_dedupes_numbers_and_skips_untracked_bookmarks() {
+        // PR 1 appears both as a chain member and a retarget candidate; PR 3
+        // has no tracked bookmark and is skipped rather than failing.
+        let prs = [pr(1, None), pr(3, None)];
+        let bookmarks = [tracked("branch-1", "local1")];
+        let jj = RemoteShaJj::new().with_remote_sha("branch-1", None);
+
+        let pushes = stale_pushes(&jj, &prs, &bookmarks, "origin", &[1, 3, 1])
+            .await
+            .unwrap();
+
+        assert_eq!(pushes.len(), 1);
+        assert_eq!(pushes[0].bookmark, "branch-1");
+        assert_eq!(pushes[0].remote_commit_id, None);
     }
 
     #[test]
