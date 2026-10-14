@@ -26,6 +26,11 @@ struct CreatedPr {
     html_url: String,
 }
 
+/// jj template rendering one `<change id> <description first line>` row per
+/// commit, for the private-commit bail message.
+const PRIVATE_LISTING_TEMPLATE: &str =
+    r#"change_id.short() ++ " " ++ description.first_line() ++ "\n""#;
+
 subcommand_args! {
     pub struct CreateArgs {
         /// Revision(s) to create PR(s) from. Pass multiple revisions to create a stack.
@@ -163,6 +168,12 @@ subcommand_args! {
         /// Disable automatic stack linking. Overrides config.
         #[arg(long = "no-stack", conflicts_with = "auto_stack")]
         pub no_stack: bool,
+
+        /// Skip the private-commit check and pass `--allow-private` to
+        /// `jj git push`, pushing commits that match the jj
+        /// `git.private-commits` revset.
+        #[arg(long)]
+        pub allow_private: bool,
     }
 }
 
@@ -208,12 +219,21 @@ pub async fn run(model: &impl Model, args: &CreateArgs) -> Result<()> {
         // stack linking control
         no_stack: _,
         auto_stack,
+        allow_private,
         // title source
         default_title_source,
     } = args;
 
     let upstream_remote = crate::gh::remote::resolved_upstream_remote(upstream_remote);
     let (remote, target) = model.resolve_target(remote, Some(upstream_remote)).await?;
+
+    // If it contains private commits, bail _before opening the editor_
+    // so the user doesn't type PR description(s) only for it to fail
+    // after that; tell the user the problem ahead of time before
+    // they waste time editing the PR
+    if !allow_private {
+        ensure_no_private_commits(jj, revs, &remote).await?;
+    }
 
     let mut created_prs = Vec::with_capacity(revs.len());
 
@@ -403,6 +423,64 @@ async fn link_stacks(
     .await
     .inspect_err(|e| log::warn!("Failed to link PR stacks: {e:#}"))
     .unwrap_or_default())
+}
+
+/// Check if any commit that `jj git push` would upload for `revs` matches the
+/// user's `git.private-commits` revset. Returns `Ok(())` if the revset does **not**
+/// contain private commits, and `Err` otherwise.
+async fn ensure_no_private_commits(jj: &impl Jj, revs: &[String], remote: &str) -> Result<()> {
+    let Some(private_commits) = jj.private_commits_revset().await? else {
+        return Ok(());
+    };
+    let spinner = crate::ui::Spinner::start("Checking for private commits");
+    let revset = private_check_revset(revs, remote, &private_commits);
+    let listing = jj
+        .eval_template(&revset, PRIVATE_LISTING_TEMPLATE, None, false, false)
+        .await
+        .context("checking for private commits")?;
+    spinner.stop();
+    if listing.trim().is_empty() {
+        return Ok(());
+    }
+    bail!(private_commits_error(&listing));
+}
+
+/// Build a revset expression that is the intersection of `revs` and the `private_commits` revset.
+/// You can use this revset to check if the input contains private commits.
+fn private_check_revset(revs: &[String], remote: &str, private_commits: &str) -> String {
+    let heads = revs
+        .iter()
+        .map(|rev| format!("({rev})"))
+        .collect::<Vec<_>>()
+        .join(" | ");
+    format!(
+        "(::({heads}) ~ ::remote_bookmarks(remote=exact:{remote})) & ({private_commits})",
+        remote = quote_jj(remote),
+    )
+}
+
+/// Render the bail message for commits matching `git.private-commits`.
+fn private_commits_error(listing: &str) -> String {
+    let lines = listing
+        .lines()
+        .filter(|line| !line.trim().is_empty())
+        .collect::<Vec<_>>();
+    let (plural, verb) = if lines.len() == 1 {
+        ("", "matches")
+    } else {
+        ("s", "match")
+    };
+    let listing = lines
+        .iter()
+        .map(|line| format!("  {line}"))
+        .collect::<Vec<_>>()
+        .join("\n");
+    format!(
+        "cannot create PR: {count} commit{plural} {verb} your `git.private-commits` revset:\n\
+         {listing}\n\
+         Hint: did you forget to rebase some commits?",
+        count = lines.len(),
+    )
 }
 
 /// Create a single PR for one revision.
@@ -601,8 +679,13 @@ async fn create_single_pr(
         lookup
     };
 
-    jj.push(rev, existing_branch.as_deref(), remote.to_string())
-        .await?;
+    jj.push(
+        rev,
+        existing_branch.as_deref(),
+        remote.to_string(),
+        args.allow_private,
+    )
+    .await?;
 
     let branch = if let Some(b) = existing_branch {
         b
@@ -772,6 +855,155 @@ async fn load_template_for(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::jj::{CommitInfo, PushedBookmark};
+    use std::path::Path;
+    use std::sync::Mutex;
+
+    #[derive(Debug, Clone)]
+    struct EvalCall {
+        revset: String,
+        template: String,
+    }
+
+    struct FakeJj {
+        private_commits: Option<String>,
+        eval_template_return: String,
+        eval_template_calls: Mutex<Vec<EvalCall>>,
+    }
+
+    impl FakeJj {
+        fn new(private_commits: Option<&str>, eval_template_return: &str) -> Self {
+            Self {
+                private_commits: private_commits.map(str::to_string),
+                eval_template_return: eval_template_return.into(),
+                eval_template_calls: Mutex::new(Vec::new()),
+            }
+        }
+    }
+
+    impl Jj for FakeJj {
+        fn default_remote(&self) -> Result<Option<String>> {
+            unimplemented!("private-commit check does not call default_remote")
+        }
+        fn remote_names(&self) -> Result<Vec<String>> {
+            unimplemented!("private-commit check does not call remote_names")
+        }
+        async fn resolve_rev(&self, _rev: &str) -> Result<CommitInfo> {
+            unimplemented!("private-commit check does not call resolve_rev")
+        }
+        async fn stacked_ancestor_bookmark(&self, _rev: &str) -> Result<Option<String>> {
+            unimplemented!("private-commit check does not call stacked_ancestor_bookmark")
+        }
+        async fn first_commit_description(&self, _revset: &str) -> Result<String> {
+            unimplemented!("private-commit check does not call first_commit_description")
+        }
+        fn remote_url(&self, _name: &str) -> Result<Option<String>> {
+            unimplemented!("private-commit check does not call remote_url")
+        }
+        async fn remote_bookmark_sha(&self, _: &str, _: &str) -> Result<Option<String>> {
+            unimplemented!("private-commit check does not call remote_bookmark_sha")
+        }
+        async fn push(
+            &self,
+            _rev: &str,
+            _bookmark: Option<&str>,
+            _remote: String,
+            _allow_private: bool,
+        ) -> Result<()> {
+            unimplemented!("private-commit check does not call push")
+        }
+        fn private_commits_revset(&self) -> impl Future<Output = Result<Option<String>>> {
+            std::future::ready(Ok(self.private_commits.clone()))
+        }
+        async fn trunk_branch(&self) -> Result<Option<String>> {
+            unimplemented!("private-commit check does not call trunk_branch")
+        }
+        async fn git_import(&self) -> Result<()> {
+            unimplemented!("private-commit check does not call git_import")
+        }
+        async fn pushed_bookmarks(&self, _remote: &str) -> Result<Vec<PushedBookmark>> {
+            unimplemented!("private-commit check does not call pushed_bookmarks")
+        }
+        fn eval_template(
+            &self,
+            revset: &str,
+            template: &str,
+            _config_file: Option<&Path>,
+            _reversed: bool,
+            _color: bool,
+        ) -> impl Future<Output = Result<String>> {
+            self.eval_template_calls.lock().unwrap().push(EvalCall {
+                revset: revset.into(),
+                template: template.into(),
+            });
+            std::future::ready(Ok(self.eval_template_return.clone()))
+        }
+        async fn diff(&self, _revset: &str) -> Result<String> {
+            unimplemented!("private-commit check does not call diff")
+        }
+        async fn pr_diff(&self, _: &str, _: &str) -> Result<String> {
+            unimplemented!("private-commit check does not call pr_diff")
+        }
+    }
+
+    #[tokio::test]
+    async fn private_check_skipped_when_config_unset() {
+        let jj = FakeJj::new(None, "");
+        ensure_no_private_commits(&jj, &["@-".into()], "origin")
+            .await
+            .unwrap();
+        assert!(jj.eval_template_calls.lock().unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn private_check_passes_when_no_commits_match() {
+        let jj = FakeJj::new(Some(r#"description(glob:"wip:*")"#), "\n");
+        ensure_no_private_commits(&jj, &["@-".into(), "xyz".into()], "origin")
+            .await
+            .unwrap();
+
+        let calls = jj.eval_template_calls.lock().unwrap();
+        assert_eq!(calls.len(), 1);
+        assert_eq!(
+            calls[0].revset,
+            r#"(::((@-) | (xyz)) ~ ::remote_bookmarks(remote=exact:"origin")) & (description(glob:"wip:*"))"#
+        );
+        assert_eq!(calls[0].template, PRIVATE_LISTING_TEMPLATE);
+    }
+
+    #[tokio::test]
+    async fn private_check_bails_listing_matching_commits() {
+        let jj = FakeJj::new(
+            Some(r#"description(glob:"wip:*")"#),
+            "abcdefgh wip: experiment\nqrstuvwx wip: more hacks\n",
+        );
+        let err = ensure_no_private_commits(&jj, &["@-".into()], "origin")
+            .await
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("2 commits match"), "unexpected message: {err}");
+        assert!(err.contains("  abcdefgh wip: experiment\n"));
+        assert!(err.contains("  qrstuvwx wip: more hacks\n"));
+        assert!(err.contains("Hint: did you forget to rebase some commits?"));
+    }
+
+    #[test]
+    fn private_commits_error_singular() {
+        let msg = private_commits_error("abcdefgh wip: experiment\n");
+        assert!(
+            msg.contains("1 commit matches"),
+            "unexpected message: {msg}"
+        );
+    }
+
+    #[test]
+    fn private_check_revset_quotes_remote() {
+        let revset = private_check_revset(&["@-".into()], r#"we"ird"#, "none()");
+        assert_eq!(
+            revset,
+            r#"(::((@-)) ~ ::remote_bookmarks(remote=exact:"we\"ird")) & (none())"#
+        );
+    }
 
     #[test]
     fn title_candidate_requires_single_nonempty_line() {

@@ -142,6 +142,7 @@ Opens your editor to a markdown file where you can write the PR description, and
 - `--no-diffs` — Hide the PR diff preview while creating the PR body. Overrides config
 - `--stack <AUTO_STACK>` — Automatically link created PRs into a GitHub stack when stacked. Default: true. Use `--no-stack` to disable
 - `--no-stack` — Disable automatic stack linking. Overrides config
+- `--allow-private` — Skip the private-commit check and pass `--allow-private` to `jj git push`, pushing commits that match the jj `git.private-commits` revset
 
 ## `jj-gh pr edit`
 

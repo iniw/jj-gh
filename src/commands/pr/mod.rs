@@ -262,6 +262,12 @@ mod tests {
     }
 
     #[test]
+    fn create_allow_private_flag_parses() {
+        assert!(parse_create(&["@-", "--allow-private"]).allow_private);
+        assert!(!parse_create(&["@-"]).allow_private);
+    }
+
+    #[test]
     fn retry_failed_requires_pr_or_all() {
         RetryFailedArgsParser::try_parse_from::<[&str; 0], _>([])
             .expect_err("bare retry-failed should be rejected");

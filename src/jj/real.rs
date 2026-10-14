@@ -139,16 +139,27 @@ impl Jj for JjCli {
         }))
     }
 
-    async fn push(&self, rev: &str, bookmark: Option<&str>, remote: String) -> Result<()> {
-        let argv = ["git", "push", "--remote", &remote]
-            .into_iter()
-            .chain(match bookmark {
-                Some(b) => ["-b", b],
-                None => ["-c", rev],
-            })
-            .collect::<Vec<_>>();
+    async fn push(
+        &self,
+        rev: &str,
+        bookmark: Option<&str>,
+        remote: String,
+        allow_private: bool,
+    ) -> Result<()> {
+        let argv = push_argv(rev, bookmark, &remote, allow_private);
+        let refs = argv.iter().map(String::as_str).collect::<Vec<&str>>();
+        run_jj_passthrough(&refs).await.context("pushing revision")
+    }
 
-        run_jj_passthrough(&argv).await.context("pushing revision")
+    async fn private_commits_revset(&self) -> Result<Option<String>> {
+        let Ok(stdout) = run_jj(&["config", "get", "git.private-commits"]).await else {
+            return Ok(None);
+        };
+        let revset = std::str::from_utf8(&stdout)
+            .context("jj config get output is not UTF-8")?
+            .trim()
+            .to_string();
+        Ok((!revset.is_empty()).then_some(revset))
     }
 
     async fn trunk_branch(&self) -> Result<Option<String>> {
@@ -335,6 +346,23 @@ fn eval_template_argv(
     argv
 }
 
+/// Build the argv passed to `run_jj_passthrough` for [`Jj::push`]. Pure so it
+/// can be unit tested without spawning.
+fn push_argv(rev: &str, bookmark: Option<&str>, remote: &str, allow_private: bool) -> Vec<String> {
+    let mut argv = ["git", "push", "--remote", remote]
+        .into_iter()
+        .map(String::from)
+        .collect::<Vec<_>>();
+    match bookmark {
+        Some(b) => argv.extend(["-b".into(), b.into()]),
+        None => argv.extend(["-c".into(), rev.into()]),
+    }
+    if allow_private {
+        argv.push("--allow-private".into());
+    }
+    argv
+}
+
 /// Build a three-dot-style diff from the best common ancestor to the PR head.
 fn pr_diff_argv(base_oid: &str, head_oid: &str) -> Vec<String> {
     vec![
@@ -401,6 +429,30 @@ mod tests {
         let log_idx = argv.iter().position(|s| s == "log").unwrap();
         let cfg_idx = argv.iter().position(|s| s == "--config-file").unwrap();
         assert!(cfg_idx < log_idx, "--config-file must precede `log`");
+    }
+
+    #[test]
+    fn push_argv_bookmark() {
+        assert_eq!(
+            push_argv("@-", Some("feature"), "origin", false),
+            vec!["git", "push", "--remote", "origin", "-b", "feature"]
+        );
+    }
+
+    #[test]
+    fn push_argv_change_with_allow_private() {
+        assert_eq!(
+            push_argv("@-", None, "origin", true),
+            vec![
+                "git",
+                "push",
+                "--remote",
+                "origin",
+                "-c",
+                "@-",
+                "--allow-private"
+            ]
+        );
     }
 
     #[test]
