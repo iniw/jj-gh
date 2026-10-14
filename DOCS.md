@@ -56,7 +56,7 @@ Commands to work with PRs
 
 ###### **Subcommands:**
 
-- `auto-merge` — Enable auto-merge on a PR
+- `auto-merge` — Enable auto-merge on one or more PRs
 - `create` — Open your preferred editor to create a PR from a revision
 - `edit` — Edit an existing PR's title, body, base, labels, reviewers, draft state, and auto-merge settings via the markdown frontmatter editor flow
 - `fetch` — Fetch a pull request into a local bookmark
@@ -67,17 +67,17 @@ Commands to work with PRs
 
 ## `jj-gh pr auto-merge`
 
-Enable auto-merge on a PR.
+Enable auto-merge on one or more PRs.
 
-Accepts either a PR number or a revision; with a revision, the PR is looked up by the rev's local bookmark. Fails if the repo does not allow auto-merge.
+Accepts PR numbers and/or jj revsets (which may match multiple commits, e.g. a whole stack via `qv::uw`); revision targets are looked up by their local bookmarks. When several PRs are targeted, a failure on one PR does not stop the others; a summary error is reported at the end. Fails if the repo does not allow auto-merge.
 
-**Usage:** `jj-gh pr auto-merge [OPTIONS] <PR_NUM|REV>`
+**Usage:** `jj-gh pr auto-merge [OPTIONS] <PR_NUM|REVSET>...`
 
 **Command Alias:** `am`
 
 ###### **Arguments:**
 
-- `<PR_NUM|REV>` — PR number, or revision ID to look up a PR from
+- `<PR_NUM|REVSET>` — PR numbers and/or jj revsets to look up PRs from. A numeric argument is treated as a PR number; anything else is resolved as a revset, which may match multiple commits (e.g. a whole stack via `qv::uw`)
 
 ###### **Options:**
 
@@ -268,19 +268,19 @@ Make GitHub match the shape of the local `jj` graph.
 
 Pushes bookmarks whose remote target has fallen behind, moves each PR's base branch onto its closest stacked ancestor bookmark, then creates, reshapes, or dissolves GitHub stacks to match the local chains. The jj graph is never rewritten: shape it yourself (e.g. via `jj rebase`), then run this.
 
-Without arguments it reconciles every local PR, printing the `jj log` it is working from and the proposed plan before touching anything. Given revisions or PR numbers it asserts exactly that stack, bottom to top, which is the escape hatch for when detection gets it wrong.
+Without arguments it reconciles every local PR, printing the `jj log` it is working from and the proposed plan before touching anything. Given revsets or PR numbers it asserts exactly that stack, bottom to top, which is the escape hatch for when detection gets it wrong. A revset range like `qv::uw` expands bottom-to-top, so a whole stack can be asserted with a single argument.
 
 Without arguments, applying needs a confirmation: answer the prompt, or pass `--force`. Outside a terminal there is nobody to prompt, so the plan is printed and `--force` is required to apply it. Naming the PRs explicitly is itself the confirmation, so that form does not prompt.
 
 Use `--dry-run` or `--json` to print the plan and stop either way.
 
-**Usage:** `jj-gh pr stack [OPTIONS] [REV_OR_PR_NUM]...`
+**Usage:** `jj-gh pr stack [OPTIONS] [REVSET_OR_PR_NUM]...`
 
 **Command Alias:** `s`
 
 ###### **Arguments:**
 
-- `<REV_OR_PR_NUM>` — Revisions or PR numbers to stack, in order from bottom to top. Each argument can be a revision ID (like `jj-gh pr create`) or a PR number. If omitted, every local PR is reconciled against the local `jj` graph
+- `<REVSET_OR_PR_NUM>` — Revisions or PR numbers to stack, in order from bottom to top. Each argument can be a jj revset (like `jj-gh pr rerun`; a range such as `qv::uw` expands bottom-to-top, skipping interior commits of multi-commit PRs) or a PR number. If omitted, every local PR is reconciled against the local `jj` graph
 
 ###### **Options:**
 

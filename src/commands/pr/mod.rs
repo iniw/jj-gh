@@ -45,10 +45,13 @@ struct ConfigOverrides<'a, T> {
 #[derive(Debug, Serialize, Subcommand)]
 #[serde(untagged)] // NB: `untagged` here is important for config merging
 pub enum PrAction {
-    /// Enable auto-merge on a PR.
+    /// Enable auto-merge on one or more PRs.
     ///
-    /// Accepts either a PR number or a revision; with a revision, the PR is looked up by the rev's
-    /// local bookmark. Fails if the repo does not allow auto-merge.
+    /// Accepts PR numbers and/or jj revsets (which may match multiple commits,
+    /// e.g. a whole stack via `qv::uw`); revision targets are looked up by
+    /// their local bookmarks. When several PRs are targeted, a failure on one
+    /// PR does not stop the others; a summary error is reported at the end.
+    /// Fails if the repo does not allow auto-merge.
     #[command(visible_alias = "am")]
     AutoMerge(AutoMergeArgsInput),
 
@@ -126,8 +129,10 @@ pub enum PrAction {
     ///
     /// Without arguments it reconciles every local PR, printing the `jj log`
     /// it is working from and the proposed plan before touching anything.
-    /// Given revisions or PR numbers it asserts exactly that stack, bottom to
-    /// top, which is the escape hatch for when detection gets it wrong.
+    /// Given revsets or PR numbers it asserts exactly that stack, bottom to
+    /// top, which is the escape hatch for when detection gets it wrong. A
+    /// revset range like `qv::uw` expands bottom-to-top, so a whole stack can
+    /// be asserted with a single argument.
     ///
     /// Without arguments, applying needs a confirmation: answer the prompt, or
     /// pass `--force`. Outside a terminal there is nobody to prompt, so the
@@ -242,6 +247,13 @@ mod tests {
         args: RerunArgsInput,
     }
 
+    #[derive(clap::Parser, Debug)]
+    #[command(no_binary_name = true)]
+    struct AutoMergeArgsParser {
+        #[command(flatten)]
+        args: AutoMergeArgsInput,
+    }
+
     /// Parses [`PrAction`] itself so subcommand names and aliases can be
     /// asserted (the flattened mirror parsers above cannot see them).
     #[derive(clap::Parser, Debug)]
@@ -283,6 +295,20 @@ mod tests {
     fn create_allow_private_flag_parses() {
         assert!(parse_create(&["@-", "--allow-private"]).allow_private);
         assert!(!parse_create(&["@-"]).allow_private);
+    }
+
+    #[test]
+    fn auto_merge_accepts_multiple_targets_in_order() {
+        let parsed = AutoMergeArgsParser::try_parse_from(["42", "qv::uw"])
+            .expect("multiple positional targets should parse")
+            .args;
+        assert_eq!(parsed.revsets, vec!["42", "qv::uw"]);
+    }
+
+    #[test]
+    fn auto_merge_requires_a_target() {
+        AutoMergeArgsParser::try_parse_from::<[&str; 0], _>([])
+            .expect_err("bare auto-merge should be rejected");
     }
 
     #[test]
@@ -695,7 +721,7 @@ mod tests {
     #[test]
     fn auto_merge_args_method_overrides_config_via_rename() {
         let input = AutoMergeArgsInput {
-            number_or_rev: "1".into(),
+            revsets: vec!["1".into()],
             auto_merge_method: Some(AutoMergeMethod::Squash),
         };
         let fig = config::defaults_figment()

@@ -16,8 +16,10 @@
 
 use crate::{
     cli::GlobalOpts,
-    gh::{CiStatus, Gh, WorkflowJob, WorkflowRun, WorkflowRunStatus, remote::Target},
-    jj::{CommitInfo, Jj as _},
+    gh::{
+        CiStatus, Gh, WorkflowJob, WorkflowRun, WorkflowRunStatus, pr_lookup::MissingPr,
+        remote::Target,
+    },
     model::Model,
     ui::Spinner,
     util::EvalWithCfgFallback,
@@ -187,86 +189,18 @@ async fn targets_from_args(
     upstream_remote: &str,
     revsets: &[String],
 ) -> Result<(Target, Vec<RerunTarget>)> {
-    let gh = model.gh().await?;
-    let (_, target) = model.resolve_target(remote, Some(upstream_remote)).await?;
-    let mut seen = HashSet::<u64>::new();
-    let mut targets = Vec::<RerunTarget>::new();
-    for arg in revsets {
-        // if given a literal PR number (as opposed to a rev)
-        if let Ok(number) = arg.parse::<u64>() {
-            if seen.insert(number) {
-                let pr = gh.get_pr(&target.owner, &target.repo, number).await?;
-                targets.push(RerunTarget {
-                    number: pr.number,
-                    head_sha: pr.head_sha,
-                    html_url: pr.html_url,
-                });
-            }
-            continue;
-        }
-
-        // else, we have a revision ID, not a PR number
-        let commits = model.jj().resolve_revset(arg).await?;
-        if commits.is_empty() {
-            bail!("revset `{arg}` matched no commits");
-        }
-        let single = commits.len() == 1;
-        for commit in &commits {
-            let number = match_commit_to_pr(gh, &target, arg, commit, single).await?;
-            let Some(number) = number else { continue };
-            if seen.insert(number) {
-                let pr = gh.get_pr(&target.owner, &target.repo, number).await?;
-                targets.push(RerunTarget {
-                    number: pr.number,
-                    head_sha: pr.head_sha,
-                    html_url: pr.html_url,
-                });
-            }
-        }
-    }
-    Ok((target, targets))
-}
-
-/// Find the open PR for one commit of a resolved revset. For a single-commit
-/// revset a missing bookmark or PR is a hard error (matching the behavior of
-/// other single-rev commands); in a multi-commit revset such commits are
-/// skipped with a note.
-async fn match_commit_to_pr(
-    gh: &impl Gh,
-    target: &Target,
-    arg: &str,
-    commit: &CommitInfo,
-    single: bool,
-) -> Result<Option<u64>> {
-    let Some(branch) = commit.bookmarks.first() else {
-        if single {
-            bail!("no local bookmark on `{arg}`; nothing to look up");
-        }
-        log::info!(
-            "skipping {}: no local bookmark",
-            short_id(&commit.change_id)
-        );
-        return Ok(None);
-    };
-    let head_spec = target.head_spec(branch);
-    let summary = gh
-        .find_open_pr(&target.owner, &target.repo, &head_spec)
+    let (target, prs) = model
+        .resolve_pr_targets(remote, upstream_remote, revsets, MissingPr::Skip)
         .await?;
-    let Some(summary) = summary else {
-        if single {
-            bail!("no open PR for revision `{arg}` (head `{head_spec}`)");
-        }
-        log::info!(
-            "skipping {} (head `{head_spec}`): no open PR",
-            short_id(&commit.change_id)
-        );
-        return Ok(None);
-    };
-    Ok(Some(summary.number))
-}
-
-fn short_id(id: &str) -> &str {
-    &id[..id.len().min(8)]
+    let targets = prs
+        .into_iter()
+        .map(|pr| RerunTarget {
+            number: pr.number,
+            head_sha: pr.head_sha,
+            html_url: pr.html_url,
+        })
+        .collect();
+    Ok((target, targets))
 }
 
 /// Resolve `--all` into a target list: every local open PR, pre-filtered by

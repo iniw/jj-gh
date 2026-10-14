@@ -11,7 +11,7 @@ use crate::{
     editor::{Editor, TempfileEditor},
     gh::{
         Gh, PrDetails, PrWithCiStatus,
-        pr_lookup::{self, PrLookup},
+        pr_lookup::{self, MissingPr, PrLookup},
         real::OctocrabGh,
         remote::{self, Target},
     },
@@ -107,21 +107,21 @@ pub trait Model {
         Ok((target, summary.number))
     }
 
-    async fn resolve_pr_with_target(
+    /// Resolve a mixed list of PR numbers and jj revsets into deduped
+    /// [`PrDetails`] plus the shared remote [`Target`]. See
+    /// [`pr_lookup::resolve_pr_targets`] for the expansion rules.
+    async fn resolve_pr_targets(
         &self,
         remote: &EvalWithCfgFallback<String>,
         upstream_remote: &str,
-        number_or_rev: &str,
-    ) -> Result<(PrDetails, Target)> {
-        let remote = self.jj().resolve_default_remote(remote).await?;
-        pr_lookup::resolve_pr_with_target(
-            self.jj(),
-            self.gh().await?,
-            &remote,
-            upstream_remote,
-            number_or_rev,
-        )
-        .await
+        args: &[String],
+        missing_pr: MissingPr,
+    ) -> Result<(Target, Vec<PrDetails>)> {
+        let (_, target) = self.resolve_target(remote, Some(upstream_remote)).await?;
+        let prs =
+            pr_lookup::resolve_pr_targets(self.jj(), self.gh().await?, &target, args, missing_pr)
+                .await?;
+        Ok((target, prs))
     }
 
     async fn resolve_target(
