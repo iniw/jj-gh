@@ -142,7 +142,7 @@ pub enum WorkflowRunStatus {
     /// Run finished; [`WorkflowRun::conclusion`] is set.
     Completed,
     /// Any state we don't model explicitly (waiting, pending, requested, etc.).
-    /// Treated as "not completed" by retry-failed logic.
+    /// Treated as "not completed" by rerun logic.
     Other,
 }
 
@@ -162,11 +162,20 @@ pub enum WorkflowRunConclusion {
 }
 
 /// A single workflow run on a commit. Subset of fields needed by
-/// `jj pr retry-failed`.
+/// `jj-gh pr rerun`.
 #[derive(Debug, Clone)]
 pub struct WorkflowRun {
     pub id: u64,
     pub status: WorkflowRunStatus,
+    pub conclusion: Option<WorkflowRunConclusion>,
+}
+
+/// A single job within a workflow run. Subset of fields needed to decide
+/// whether an in-progress run already contains a failed job. Job conclusions
+/// reuse the run enum; job-only strings map to `Other`.
+#[derive(Debug, Clone)]
+pub struct WorkflowJob {
+    pub id: u64,
     pub conclusion: Option<WorkflowRunConclusion>,
 }
 
@@ -349,6 +358,19 @@ pub trait Gh {
         repo: &str,
         sha: &str,
     ) -> Result<Vec<WorkflowRun>>;
+
+    /// List the jobs of a workflow run (latest attempt only). Used to detect
+    /// failed jobs inside in-progress runs for `jj-gh pr rerun --cancel`.
+    ///
+    /// # Errors
+    ///
+    /// Propagates API errors.
+    async fn list_jobs_for_run(
+        &self,
+        owner: &str,
+        repo: &str,
+        run_id: u64,
+    ) -> Result<Vec<WorkflowJob>>;
 
     /// Cancel an in-progress workflow run. The API call is fire-and-forget;
     /// GitHub asynchronously transitions the run to `completed/cancelled`.

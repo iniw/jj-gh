@@ -891,6 +891,9 @@ mod tests {
         async fn resolve_rev(&self, _rev: &str) -> Result<CommitInfo> {
             unimplemented!("private-commit check does not call resolve_rev")
         }
+        async fn resolve_revset(&self, _revset: &str) -> Result<Vec<CommitInfo>> {
+            unimplemented!()
+        }
         async fn stacked_ancestor_bookmark(&self, _rev: &str) -> Result<Option<String>> {
             unimplemented!("private-commit check does not call stacked_ancestor_bookmark")
         }

@@ -290,6 +290,9 @@ mod tests {
         async fn resolve_rev(&self, _rev: &str) -> Result<CommitInfo> {
             unimplemented!("fetch does not call resolve_rev")
         }
+        async fn resolve_revset(&self, _revset: &str) -> Result<Vec<CommitInfo>> {
+            unimplemented!()
+        }
         async fn stacked_ancestor_bookmark(&self, _rev: &str) -> Result<Option<String>> {
             unimplemented!("fetch does not call stacked_ancestor_bookmark")
         }
@@ -447,6 +450,14 @@ mod tests {
         }
         async fn rerun_failed_jobs(&self, _: &str, _: &str, _: u64) -> Result<()> {
             unimplemented!("fetch does not call rerun_failed_jobs")
+        }
+        async fn list_jobs_for_run(
+            &self,
+            _: &str,
+            _: &str,
+            _: u64,
+        ) -> Result<Vec<crate::gh::WorkflowJob>> {
+            unimplemented!()
         }
         async fn create_stack(
             &self,

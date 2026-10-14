@@ -4,7 +4,7 @@ use crate::{
     config::AutoMergeMethod,
     gh::{
         BaseLookup, CreatePrRequest, Gh, Label, PrCreated, PrDetails, PrSummary, PullRequestStack,
-        Reviewer, UpdatePr, WorkflowRun, WorkflowRunConclusion, WorkflowRunStatus,
+        Reviewer, UpdatePr, WorkflowJob, WorkflowRun, WorkflowRunConclusion, WorkflowRunStatus,
         queries::{
             ConvertToDraftInternal, ConvertToDraftResponseData, ConvertToDraftVariables,
             CreatePrInternal, CreatePrResponseData, CreatePrVariables, DisableAutoMergeInternal,
@@ -430,6 +430,41 @@ impl Gh for OctocrabGh {
         Ok(page.items.iter().map(map_workflow_run).collect())
     }
 
+    async fn list_jobs_for_run(
+        &self,
+        owner: &str,
+        repo: &str,
+        run_id: u64,
+    ) -> Result<Vec<WorkflowJob>> {
+        // Octocrab has a typed jobs API, but its `workflows::Conclusion` enum
+        // lacks `stale`/`startup_failure` and has no catch-all, so GitHub
+        // responses containing those conclusions fail to deserialize. Use a
+        // raw GET with a lenient private model instead.
+        let route = format!("/repos/{owner}/{repo}/actions/runs/{run_id}/jobs");
+        let mut jobs = Vec::<WorkflowJob>::new();
+        for page in 1.. {
+            let params = ListJobsParams {
+                filter: "latest",
+                per_page: JOBS_PER_PAGE,
+                page,
+            };
+            let batch = self
+                .octo
+                .get::<JobsPage, _, _>(&route, Some(&params))
+                .await
+                .map_err(humanize)
+                .with_context(|| format!("listing jobs for workflow run {run_id}"))?;
+            if batch.jobs.is_empty() {
+                break;
+            }
+            jobs.extend(batch.jobs.iter().map(map_workflow_job));
+            if jobs.len() as u64 >= batch.total_count {
+                break;
+            }
+        }
+        Ok(jobs)
+    }
+
     async fn cancel_workflow_run(&self, owner: &str, repo: &str, run_id: u64) -> Result<()> {
         self.octo
             .actions()
@@ -610,14 +645,38 @@ async fn post_action_run(
     post_no_content(octo, &route, None::<&()>).await
 }
 
-fn map_workflow_run(r: &octocrab::models::workflows::Run) -> WorkflowRun {
-    let status = match r.status.as_str() {
+const JOBS_PER_PAGE: u8 = 100;
+
+#[derive(serde::Serialize)]
+struct ListJobsParams {
+    filter: &'static str,
+    per_page: u8,
+    page: u32,
+}
+
+#[derive(serde::Deserialize)]
+struct JobsPage {
+    total_count: u64,
+    jobs: Vec<RawJob>,
+}
+
+#[derive(serde::Deserialize)]
+struct RawJob {
+    id: u64,
+    conclusion: Option<String>,
+}
+
+fn map_run_status(status: &str) -> WorkflowRunStatus {
+    match status {
         "queued" => WorkflowRunStatus::Queued,
         "in_progress" => WorkflowRunStatus::InProgress,
         "completed" => WorkflowRunStatus::Completed,
         _ => WorkflowRunStatus::Other,
-    };
-    let conclusion = r.conclusion.as_deref().map(|c| match c {
+    }
+}
+
+fn map_run_conclusion(conclusion: &str) -> WorkflowRunConclusion {
+    match conclusion {
         "success" => WorkflowRunConclusion::Success,
         "failure" => WorkflowRunConclusion::Failure,
         "cancelled" => WorkflowRunConclusion::Cancelled,
@@ -627,11 +686,21 @@ fn map_workflow_run(r: &octocrab::models::workflows::Run) -> WorkflowRun {
         "neutral" => WorkflowRunConclusion::Neutral,
         "startup_failure" => WorkflowRunConclusion::StartupFailure,
         _ => WorkflowRunConclusion::Other,
-    });
+    }
+}
+
+fn map_workflow_run(r: &octocrab::models::workflows::Run) -> WorkflowRun {
     WorkflowRun {
         id: r.id.into_inner(),
-        status,
-        conclusion,
+        status: map_run_status(&r.status),
+        conclusion: r.conclusion.as_deref().map(map_run_conclusion),
+    }
+}
+
+fn map_workflow_job(j: &RawJob) -> WorkflowJob {
+    WorkflowJob {
+        id: j.id,
+        conclusion: j.conclusion.as_deref().map(map_run_conclusion),
     }
 }
 
@@ -748,5 +817,35 @@ mod tests {
         });
         let result = serde_json::from_value::<PullRequestStack>(json);
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn jobs_page_tolerates_unknown_conclusions() {
+        // GitHub emits job conclusions like `stale` that octocrab's typed
+        // model cannot deserialize; our lenient model must map them to
+        // `Other` instead of failing the whole response.
+        let json = serde_json::json!({
+            "total_count": 2,
+            "jobs": [
+                {
+                    "id": 1,
+                    "status": "completed",
+                    "conclusion": "stale",
+                    "workflow_name": null
+                },
+                {
+                    "id": 2,
+                    "status": "in_progress",
+                    "conclusion": null
+                }
+            ]
+        });
+        let page = serde_json::from_value::<JobsPage>(json).unwrap();
+        assert_eq!(page.total_count, 2);
+        let jobs = page.jobs.iter().map(map_workflow_job).collect::<Vec<_>>();
+        assert_eq!(jobs[0].id, 1);
+        assert_eq!(jobs[0].conclusion, Some(WorkflowRunConclusion::Other));
+        assert_eq!(jobs[1].id, 2);
+        assert_eq!(jobs[1].conclusion, None);
     }
 }

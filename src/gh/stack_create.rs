@@ -393,6 +393,14 @@ mod tests {
         async fn rerun_failed_jobs(&self, _: &str, _: &str, _: u64) -> Result<()> {
             unimplemented!()
         }
+        async fn list_jobs_for_run(
+            &self,
+            _: &str,
+            _: &str,
+            _: u64,
+        ) -> Result<Vec<crate::gh::WorkflowJob>> {
+            unimplemented!()
+        }
         fn create_stack(
             &self,
             _: &str,

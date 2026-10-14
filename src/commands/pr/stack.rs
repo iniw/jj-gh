@@ -21,7 +21,9 @@
 use crate::{
     cli::GlobalOpts,
     gh::{
-        Gh, PrDetails, PrWithCiStatus, PullRequestStack, UpdatePr, remote,
+        Gh, PrDetails, PrWithCiStatus, PullRequestStack, UpdatePr,
+        pr_lookup::{MissingPr, resolve_pr_targets},
+        remote,
         stack_create::{
             ChainOutcome, ChainResult, create_stacks, stack_exists, stack_members, unstack,
         },
@@ -50,9 +52,11 @@ const MAGENTA: &str = "\x1b[35m";
 subcommand_args! {
     pub struct StackArgs {
         /// Revisions or PR numbers to stack, in order from bottom to top.
-        /// Each argument can be a revision ID (like `jj-gh pr create`) or a PR number.
-        /// If omitted, every local PR is reconciled against the local `jj` graph.
-        #[arg(value_name = "REV_OR_PR_NUM", num_args = 0..)]
+        /// Each argument can be a jj revset (like `jj-gh pr rerun`; a range
+        /// such as `qv::uw` expands bottom-to-top, skipping interior commits
+        /// of multi-commit PRs) or a PR number. If omitted, every local PR is
+        /// reconciled against the local `jj` graph.
+        #[arg(value_name = "REVSET_OR_PR_NUM", num_args = 0..)]
         pub targets: Vec<String>,
 
         /// Apply the plan without prompting. Required to apply anything when
@@ -746,18 +750,17 @@ async fn explicit(model: &impl Model, args: &StackArgs) -> Result<()> {
     let jj = model.jj();
     let gh = model.gh().await?;
 
-    if args.targets.len() < 2 {
-        bail!("a stack needs at least two PRs; pass them bottom to top");
-    }
-
     let spinner = Spinner::start("Resolving PRs");
     let (remote_name, target) = model.resolve_target(remote, Some(upstream_remote)).await?;
-    let mut pr_details = Vec::with_capacity(args.targets.len());
-    for target_str in &args.targets {
-        let (pr, _) = model
-            .resolve_pr_with_target(remote, upstream_remote, target_str)
-            .await?;
-        pr_details.push(pr);
+    // Strict matching: this form asserts an exact stack, so a bookmarked
+    // commit without an open PR is an error rather than a skip.
+    let pr_details = resolve_pr_targets(jj, gh, &target, &args.targets, MissingPr::Error).await?;
+
+    if pr_details.len() < 2 {
+        bail!(
+            "a stack needs at least two PRs; pass them bottom to top \
+             (or as a revset range like `qv::uw`)"
+        );
     }
 
     let stacks = pr_details
@@ -963,6 +966,9 @@ mod tests {
             unimplemented!()
         }
         async fn resolve_rev(&self, _rev: &str) -> Result<CommitInfo> {
+            unimplemented!()
+        }
+        async fn resolve_revset(&self, _revset: &str) -> Result<Vec<CommitInfo>> {
             unimplemented!()
         }
         fn remote_url(&self, _name: &str) -> Result<Option<String>> {
