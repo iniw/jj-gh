@@ -5,6 +5,23 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.3](https://github.com/mrjones2014/jj-gh/compare/jj-gh-v0.3.2...jj-gh-v0.3.3) - 2026-10-14
+
+### Added
+
+- *(pr)* Make `auto-merge` and `stack` accept revset expressions
+- *(pr-create)* Check for private commits ahead of time and bail
+
+### Fixed
+
+- *(pr-rerun)* Improve behavior of `rerun` subcommand
+- *(stack)* Push stale head when a PR is unstacked or retargeted       
+
+### Other
+
+- *(deps)* bump gix from 0.87.1 to 0.88.0 ([#330](https://github.com/mrjones2014/jj-gh/pull/330))
+- *(deps)* update GitHub GraphQL schema ([#326](https://github.com/mrjones2014/jj-gh/pull/326))
+
 ## [0.3.2](https://github.com/mrjones2014/jj-gh/compare/jj-gh-v0.3.1...jj-gh-v0.3.2) - 2026-10-08
 
 ### Added
