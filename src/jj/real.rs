@@ -88,6 +88,25 @@ impl Jj for JjCli {
             .with_context(|| format!("could not parse jj log output for `{rev}`"))
     }
 
+    async fn resolve_revset(&self, revset: &str) -> Result<Vec<CommitInfo>> {
+        let record = json_object_template(&[
+            ("change_id", "change_id"),
+            ("commit_id", "commit_id"),
+            ("description", "description"),
+            ("bookmarks", "bookmarks.map(|b| b.name())"),
+        ]);
+        let template = format!(r#"{record} ++ "\n""#);
+        let stdout = run_jj(&["log", "--no-graph", "-r", revset, "-T", &template]).await?;
+        std::str::from_utf8(&stdout)
+            .context("jj log output is not UTF-8")?
+            .lines()
+            .filter(|l| !l.trim().is_empty())
+            .map(|l| {
+                serde_json::from_str(l).with_context(|| format!("parsing commit record `{l}`"))
+            })
+            .collect()
+    }
+
     async fn stacked_ancestor_bookmark(&self, rev: &str) -> Result<Option<String>> {
         // Ignore bookmarks that are already in trunk. They cannot be the base
         // of an active PR stack.

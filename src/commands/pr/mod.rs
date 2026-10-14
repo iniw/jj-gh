@@ -8,7 +8,7 @@ mod create;
 mod edit;
 pub mod fetch;
 mod log;
-mod retry_failed;
+mod rerun;
 mod stack;
 mod url;
 
@@ -29,7 +29,7 @@ use self::log::{PrLogArgs, PrLogArgsInput};
 use auto_merge::{AutoMergeArgs, AutoMergeArgsInput};
 use edit::{EditArgs, EditArgsInput};
 use fetch::{FetchArgs, FetchArgsInput};
-use retry_failed::{RetryFailedArgs, RetryFailedArgsInput};
+use rerun::{RerunArgs, RerunArgsInput};
 use stack::{StackArgs, StackArgsInput};
 
 pub use create::{CreateArgs, CreateArgsInput};
@@ -91,21 +91,30 @@ pub enum PrAction {
     #[command(visible_alias = "l")]
     Log(PrLogArgsInput),
 
-    /// Re-run failed CI jobs on a PR, or on all local PRs with failed CI.
+    /// Re-run CI on one or more PRs.
     ///
-    /// Resolves the PR from a revision (via its local bookmark) or PR number,
-    /// then re-runs failed workflow runs on the PR's head commit. By default
-    /// the command fails if CI has not yet completed, because GitHub refuses
-    /// to re-run a workflow run until it reaches the `completed` state.
-    /// Pass `--all` to retry every local PR whose rolled-up CI status failed.
+    /// Accepts PR numbers and/or jj revsets (which may match multiple
+    /// commits, e.g. `qn::ps`); revision targets are looked up via their
+    /// local bookmarks. Pass `--all` to target every local PR instead.
     ///
-    /// With `--cancel`, in-progress runs are cancelled first; once they
-    /// finalize, every workflow run is re-run (full pipeline restart).
+    /// By default, failed jobs are re-run on each PR's completed workflow
+    /// runs with a retryable failure; runs still in progress are skipped with
+    /// a note, because GitHub refuses to re-run a workflow run until it
+    /// reaches the `completed` state. With `--all-jobs`, every completed run
+    /// is fully restarted, even successful ones (not to be confused with
+    /// `--all`, which targets all local PRs rather than all jobs). With
+    /// `--cancel`, in-progress runs that already contain a failed job are
+    /// cancelled first and retried once they finalize; combined with
+    /// `--all-jobs`, ALL in-progress runs are cancelled and the entire
+    /// pipeline is restarted.
+    ///
+    /// When several PRs are targeted, a failure on one PR does not stop the
+    /// others; the command reports a summary error at the end instead.
     #[command(
-        visible_alias = "rerun",
+        alias = "retry-failed",
         group = clap::ArgGroup::new("retry_target").required(true).multiple(false)
     )]
-    RetryFailed(RetryFailedArgsInput),
+    Rerun(RerunArgsInput),
 
     /// Make GitHub match the shape of the local `jj` graph.
     ///
@@ -173,9 +182,9 @@ pub async fn dispatch(global: GlobalOptsInput, action: PrAction) -> Result<()> {
             let args = PrLogArgs::resolve(input, &config, &globals);
             self::log::run(&model, &args).await?;
         }
-        PrAction::RetryFailed(input) => {
-            let args = RetryFailedArgs::resolve(input, &config, &globals);
-            retry_failed::run(&model, &args).await?;
+        PrAction::Rerun(input) => {
+            let args = RerunArgs::resolve(input, &config, &globals);
+            rerun::run(&model, &args).await?;
         }
         PrAction::Stack(input) => {
             let args = StackArgs::resolve(input, &config, &globals);
@@ -228,9 +237,18 @@ mod tests {
         no_binary_name = true,
         group = clap::ArgGroup::new("retry_target").required(true).multiple(false)
     )]
-    struct RetryFailedArgsParser {
+    struct RerunArgsParser {
         #[command(flatten)]
-        args: RetryFailedArgsInput,
+        args: RerunArgsInput,
+    }
+
+    /// Parses [`PrAction`] itself so subcommand names and aliases can be
+    /// asserted (the flattened mirror parsers above cannot see them).
+    #[derive(clap::Parser, Debug)]
+    #[command(no_binary_name = true)]
+    struct PrActionParser {
+        #[command(subcommand)]
+        action: PrAction,
     }
 
     fn parse_create(argv: &[&str]) -> CreateArgsInput {
@@ -268,25 +286,65 @@ mod tests {
     }
 
     #[test]
-    fn retry_failed_requires_pr_or_all() {
-        RetryFailedArgsParser::try_parse_from::<[&str; 0], _>([])
-            .expect_err("bare retry-failed should be rejected");
+    fn rerun_requires_target_or_all() {
+        RerunArgsParser::try_parse_from::<[&str; 0], _>([])
+            .expect_err("bare rerun should be rejected");
     }
 
     #[test]
-    fn retry_failed_all_conflicts_with_pr() {
-        RetryFailedArgsParser::try_parse_from(["--all", "42"])
+    fn rerun_all_conflicts_with_targets() {
+        RerunArgsParser::try_parse_from(["--all", "42"])
             .expect_err("--all with a PR should be rejected");
     }
 
     #[test]
-    fn retry_failed_all_allows_cancel() {
-        let parsed = RetryFailedArgsParser::try_parse_from(["--all", "--cancel"])
+    fn rerun_all_allows_cancel() {
+        let parsed = RerunArgsParser::try_parse_from(["--all", "--cancel"])
             .expect("--all --cancel should parse")
             .args;
         assert!(parsed.all);
         assert!(parsed.cancel);
-        assert!(parsed.number_or_rev.is_none());
+        assert!(parsed.revsets.is_empty());
+    }
+
+    #[test]
+    fn rerun_accepts_multiple_targets_in_order() {
+        let parsed = RerunArgsParser::try_parse_from(["42", "qn::ps", "abc"])
+            .expect("multiple positional targets should parse")
+            .args;
+        assert_eq!(parsed.revsets, vec!["42", "qn::ps", "abc"]);
+    }
+
+    #[test]
+    fn rerun_all_jobs_parses_alone_and_with_cancel() {
+        let parsed = RerunArgsParser::try_parse_from(["42", "--all-jobs"])
+            .expect("--all-jobs should parse")
+            .args;
+        assert!(parsed.all_jobs);
+        assert!(!parsed.cancel);
+
+        let parsed = RerunArgsParser::try_parse_from(["42", "--all-jobs", "--cancel"])
+            .expect("--all-jobs --cancel should parse")
+            .args;
+        assert!(parsed.all_jobs);
+        assert!(parsed.cancel);
+    }
+
+    #[test]
+    fn rerun_cancel_timeout_requires_cancel() {
+        RerunArgsParser::try_parse_from(["42", "--cancel-timeout", "10"])
+            .expect_err("--cancel-timeout without --cancel should be rejected");
+    }
+
+    #[test]
+    fn rerun_subcommand_and_hidden_alias_both_parse() {
+        let parsed = PrActionParser::try_parse_from(["rerun", "42"])
+            .expect("`rerun` should be the primary subcommand name");
+        assert!(matches!(parsed.action, PrAction::Rerun(_)));
+
+        let parsed = PrActionParser::try_parse_from(["retry-failed", "42"])
+            .expect("`retry-failed` should remain a hidden alias");
+        assert!(matches!(parsed.action, PrAction::Rerun(_)));
     }
 
     fn merged_create(argv: &[&str], toml_config: &str) -> Config {

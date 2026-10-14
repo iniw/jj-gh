@@ -1,6 +1,6 @@
 //! PR lookup helpers: resolve a revision or PR number into the
 //! GitHub PR (and its remote target). Used by the `pr` handlers (`auto-merge`,
-//! `edit`, `retry-failed`) and by `jj-gh debug pr-lookup`.
+//! `edit`, `rerun`) and by `jj-gh debug pr-lookup`.
 
 use crate::{
     gh::{Gh, PrDetails, PrSummary, remote},

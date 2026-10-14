@@ -56,6 +56,16 @@ pub trait Jj {
     /// the jj invocation fails.
     async fn resolve_rev(&self, rev: &str) -> Result<CommitInfo>;
 
+    /// Resolve a revset into commit metadata for every commit it matches, in
+    /// jj's log order. Unlike [`Jj::resolve_rev`], no limit is applied, so
+    /// multi-commit revsets return one entry per commit. Returns an empty vec
+    /// when the revset matches nothing.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the revset is invalid or the jj invocation fails.
+    async fn resolve_revset(&self, revset: &str) -> Result<Vec<CommitInfo>>;
+
     /// Closest ancestor commit (excluding `rev` itself) that carries a bookmark.
     ///
     /// # Errors

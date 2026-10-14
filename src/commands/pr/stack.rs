@@ -965,6 +965,9 @@ mod tests {
         async fn resolve_rev(&self, _rev: &str) -> Result<CommitInfo> {
             unimplemented!()
         }
+        async fn resolve_revset(&self, _revset: &str) -> Result<Vec<CommitInfo>> {
+            unimplemented!()
+        }
         fn remote_url(&self, _name: &str) -> Result<Option<String>> {
             unimplemented!()
         }
