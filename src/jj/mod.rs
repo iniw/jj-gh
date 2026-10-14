@@ -87,12 +87,30 @@ pub trait Jj {
 
     /// Pushes `rev` to `remote`. With an existing `bookmark`, pushes it via
     /// `-b <bookmark>`; otherwise `-c <rev>`, which creates a `push-<change_id>`
-    /// bookmark.
+    /// bookmark. With `allow_private`, passes `--allow-private` so jj pushes
+    /// commits matching the `git.private-commits` revset.
     ///
     /// # Errors
     ///
     /// Propagates jj failures.
-    async fn push(&self, rev: &str, bookmark: Option<&str>, remote: String) -> Result<()>;
+    async fn push(
+        &self,
+        rev: &str,
+        bookmark: Option<&str>,
+        remote: String,
+        allow_private: bool,
+    ) -> Result<()>;
+
+    /// The `git.private-commits` revset from jj config, or `Ok(None)` when the
+    /// setting is unset. jj refuses to push commits matching this revset
+    /// unless `--allow-private` is given.
+    ///
+    /// # Errors
+    ///
+    /// Never errors today: a failing `jj config get` (missing key, or any
+    /// other failure) maps to `Ok(None)`; subsequent jj calls surface real
+    /// problems.
+    async fn private_commits_revset(&self) -> Result<Option<String>>;
 
     /// Bookmark at jj's `trunk()` revset, or `Ok(None)` if `trunk()` is empty.
     ///

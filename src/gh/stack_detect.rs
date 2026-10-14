@@ -216,7 +216,16 @@ mod tests {
         async fn first_commit_description(&self, _revset: &str) -> Result<String> {
             unimplemented!()
         }
-        async fn push(&self, _rev: &str, _bookmark: Option<&str>, _remote: String) -> Result<()> {
+        async fn push(
+            &self,
+            _rev: &str,
+            _bookmark: Option<&str>,
+            _remote: String,
+            _allow_private: bool,
+        ) -> Result<()> {
+            unimplemented!()
+        }
+        async fn private_commits_revset(&self) -> Result<Option<String>> {
             unimplemented!()
         }
         async fn pushed_bookmarks(&self, _remote: &str) -> Result<Vec<PushedBookmark>> {

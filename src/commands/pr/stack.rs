@@ -715,6 +715,7 @@ async fn apply(model: &impl Model, ctx: Gathered, plan: Plan) -> Result<()> {
             &push.local_commit_id,
             Some(&push.bookmark),
             remote_name.clone(),
+            false,
         )
         .await
         .with_context(|| format!("pushing `{}` to `{remote_name}`", push.bookmark))?;
@@ -829,9 +830,14 @@ async fn push_stale(jj: &impl Jj, pr_details: &[PrDetails], remote_name: &str) -
         if remote_commit_id.as_deref() == Some(local_commit_id.as_str()) {
             continue;
         }
-        jj.push(local_commit_id, Some(&pr.head_ref), remote_name.to_string())
-            .await
-            .with_context(|| format!("pushing `{}` to `{remote_name}`", pr.head_ref))?;
+        jj.push(
+            local_commit_id,
+            Some(&pr.head_ref),
+            remote_name.to_string(),
+            false,
+        )
+        .await
+        .with_context(|| format!("pushing `{}` to `{remote_name}`", pr.head_ref))?;
     }
     Ok(())
 }
@@ -981,7 +987,16 @@ mod tests {
         async fn first_commit_description(&self, _revset: &str) -> Result<String> {
             unimplemented!()
         }
-        async fn push(&self, _rev: &str, _bookmark: Option<&str>, _remote: String) -> Result<()> {
+        async fn push(
+            &self,
+            _rev: &str,
+            _bookmark: Option<&str>,
+            _remote: String,
+            _allow_private: bool,
+        ) -> Result<()> {
+            unimplemented!()
+        }
+        async fn private_commits_revset(&self) -> Result<Option<String>> {
             unimplemented!()
         }
         async fn pushed_bookmarks(&self, _remote: &str) -> Result<Vec<PushedBookmark>> {

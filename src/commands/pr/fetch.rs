@@ -303,8 +303,17 @@ mod tests {
         async fn remote_bookmark_sha(&self, _: &str, _: &str) -> Result<Option<String>> {
             unimplemented!("fetch does not call remote_bookmark_sha")
         }
-        async fn push(&self, _rev: &str, _bookmark: Option<&str>, _remote: String) -> Result<()> {
+        async fn push(
+            &self,
+            _rev: &str,
+            _bookmark: Option<&str>,
+            _remote: String,
+            _allow_private: bool,
+        ) -> Result<()> {
             unimplemented!("fetch does not call push")
+        }
+        async fn private_commits_revset(&self) -> Result<Option<String>> {
+            unimplemented!("fetch does not call private_commits_revset")
         }
         async fn trunk_branch(&self) -> Result<Option<String>> {
             unimplemented!("fetch does not call trunk_branch")

@@ -394,7 +394,16 @@ mod tests {
         async fn remote_bookmark_sha(&self, _: &str, _: &str) -> Result<Option<String>> {
             unimplemented!()
         }
-        async fn push(&self, _rev: &str, _bookmark: Option<&str>, _remote: String) -> Result<()> {
+        async fn push(
+            &self,
+            _rev: &str,
+            _bookmark: Option<&str>,
+            _remote: String,
+            _allow_private: bool,
+        ) -> Result<()> {
+            unimplemented!()
+        }
+        async fn private_commits_revset(&self) -> Result<Option<String>> {
             unimplemented!()
         }
         async fn trunk_branch(&self) -> Result<Option<String>> {
