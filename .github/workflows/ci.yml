@@ -86,11 +86,9 @@ jobs:
       group: release-plz
       cancel-in-progress: false
     steps:
-      - uses: wimpysworld/nothing-but-nix@v10
-        with:
-          # release builds with cargo outside nix store and need a bit more free space
-          # otherwise you get random weird errors from the linker crashing
-          root-safe-haven: "10240"
+      # NB: Don't use nothing-but-nix here, since this builds outside of the
+      # Nix store, nothing-but-nix will delete the cargo registry needed by
+      # release-plz
       - uses: actions/checkout@v7
         with:
           fetch-depth: 0
