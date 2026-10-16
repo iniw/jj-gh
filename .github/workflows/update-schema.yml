@@ -1,7 +1,7 @@
 name: Update GitHub GraphQL schema
 on:
   schedule:
-    - cron: '0 16 * * 5'
+    - cron: "0 16 * * 5"
   workflow_dispatch:
 jobs:
   update-schema:
@@ -23,4 +23,5 @@ jobs:
           title: "chore(deps): update GitHub GraphQL schema"
           branch: "automation/update-graphql-schema"
       - name: Enable PR auto-merge on CI success
+        if: steps.create-pr.outputs.pull-request-number
         run: GH_TOKEN="${{ secrets.GITHUB_TOKEN }}" gh pr merge --squash --delete-branch --auto ${{ steps.create-pr.outputs.pull-request-number }}
