@@ -1,11 +1,8 @@
-{ pkgs, rustToolchain }:
+{ pkgs }:
 {
   projectRootFile = "flake.nix";
   programs = {
-    rustfmt = {
-      enable = true;
-      package = rustToolchain;
-    };
+    rustfmt.enable = true;
     prettier = {
       enable = true;
       includes = [

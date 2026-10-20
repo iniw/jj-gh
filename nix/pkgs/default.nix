@@ -3,7 +3,6 @@
   craneLib,
   commonArgs,
   cargoArtifacts,
-  rustToolchain,
   treefmtEval,
 }:
 let
@@ -13,7 +12,6 @@ let
       craneLib
       commonArgs
       cargoArtifacts
-      rustToolchain
       treefmtEval
       ;
   };

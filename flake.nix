@@ -5,10 +5,6 @@
     nixpkgs.url = "github:nixos/nixpkgs/nixos-unstable";
     crane.url = "github:ipetkov/crane";
     flake-utils.url = "github:numtide/flake-utils";
-    rust-overlay = {
-      url = "github:oxalica/rust-overlay";
-      inputs.nixpkgs.follows = "nixpkgs";
-    };
     treefmt-nix = {
       url = "github:numtide/treefmt-nix";
       inputs.nixpkgs.follows = "nixpkgs";
@@ -21,18 +17,13 @@
       crane,
       flake-utils,
       nixpkgs,
-      rust-overlay,
       treefmt-nix,
     }:
     flake-utils.lib.eachSystem [ "aarch64-darwin" "aarch64-linux" "x86_64-linux" ] (
       system:
       let
-        pkgs = import nixpkgs {
-          inherit system;
-          overlays = [ (import rust-overlay) ];
-        };
-        rustToolchain = pkgs.rust-bin.fromRustupToolchainFile ./rust-toolchain.toml;
-        craneLib = (crane.mkLib pkgs).overrideToolchain rustToolchain;
+        pkgs = nixpkgs.legacyPackages.${system};
+        craneLib = crane.mkLib pkgs;
 
         src =
           let
@@ -69,7 +60,6 @@
         treefmtEval = treefmt-nix.lib.evalModule pkgs (
           import ./nix/treefmt.nix {
             inherit pkgs;
-            inherit rustToolchain;
           }
         );
         packageSet = import ./nix/pkgs {
@@ -78,7 +68,6 @@
             craneLib
             commonArgs
             cargoArtifacts
-            rustToolchain
             treefmtEval
             ;
         };
