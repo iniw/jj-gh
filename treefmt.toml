@@ -20,11 +20,6 @@ command = "rustfmt"
 options = ["--config", "skip_children=true", "--edition", "2024"]
 includes = ["*.rs"]
 
-[formatter.taplo]
-command = "taplo"
-options = ["format"]
-includes = ["*.toml"]
-
 [formatter.tombi]
 command = "tombi"
 options = ["format", "--offline"]

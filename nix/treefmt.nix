@@ -5,7 +5,6 @@ pkgs.treefmt.withConfig {
     pkgs.nixfmt
     pkgs.prettier
     pkgs.rustfmt
-    pkgs.taplo
     pkgs.tombi
     pkgs.yamlfmt
   ];
