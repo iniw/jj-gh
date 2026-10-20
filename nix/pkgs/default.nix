@@ -1,6 +1,5 @@
 {
   pkgs,
-  crane,
   craneLib,
   commonArgs,
   cargoArtifacts,
@@ -8,18 +7,12 @@
   treefmtEval,
 }:
 let
-  nightlyToolchain = pkgs.rust-bin.selectLatestNightlyWith (toolchain: toolchain.minimal);
-  craneLibNightly = (crane.mkLib pkgs).overrideToolchain nightlyToolchain;
-  cargoArtifactsNightly = craneLibNightly.buildDepsOnly commonArgs;
-
   callPackage = pkgs.lib.callPackageWith {
     inherit
       pkgs
       craneLib
-      craneLibNightly
       commonArgs
       cargoArtifacts
-      cargoArtifactsNightly
       rustToolchain
       treefmtEval
       ;
@@ -43,6 +36,5 @@ in
     inherit gen-docs gen-manpage;
     default = jj-gh;
     dev = callPackage ./jj-gh-dev.nix { };
-    udeps = callPackage ./udeps.nix { };
   };
 }

@@ -75,7 +75,6 @@
         packageSet = import ./nix/pkgs {
           inherit
             pkgs
-            crane
             craneLib
             commonArgs
             cargoArtifacts
@@ -113,7 +112,7 @@
           packages = [
             pkgs.cargo-nextest
             pkgs.cargo-semver-checks
-            pkgs.cargo-udeps
+            pkgs.cargo-machete
             pkgs.ast-grep
             pkgs.jujutsu
             pkgs.rust-analyzer
