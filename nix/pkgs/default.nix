@@ -5,6 +5,9 @@
 let
   inherit (pkgs) lib;
 
+  # Crane only builds the CI checks and the dev tools, because its cached
+  # dependency artifacts speed up repeated builds. The `jj-gh` package itself
+  # uses nixpkgs' `buildRustPackage`.
   craneLib = crane.mkLib pkgs;
 
   src =
