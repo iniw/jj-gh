@@ -40,5 +40,7 @@ craneLib.buildPackage (
       + ''
         rm -f $out/bin/gen-manpage
       '';
+
+    meta.mainProgram = "jj-gh";
   }
 )
