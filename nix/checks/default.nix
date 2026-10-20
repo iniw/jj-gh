@@ -7,7 +7,6 @@
   treefmtEval,
   update-docs,
   jj-gh,
-  release-plz-patched,
 }:
 let
   callPackage = pkgs.lib.callPackageWith {
@@ -34,7 +33,3 @@ checks
 // {
   inherit jj-gh;
 }
-// (pkgs.lib.optionalAttrs pkgs.stdenv.hostPlatform.isLinux {
-  # so that the patched version gets cached by CI
-  inherit release-plz-patched;
-})

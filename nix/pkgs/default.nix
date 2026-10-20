@@ -28,21 +28,19 @@ let
   gen-docs = callPackage ./gen-docs.nix { };
   gen-manpage = callPackage ./gen-manpage.nix { };
   jj-gh = callPackage ./jj-gh.nix { };
-  release-plz-patched = callPackage ./release-plz-patched.nix { };
   update-docs = callPackage ./update-docs.nix { inherit gen-docs; };
 in
 {
   inherit
     jj-gh
-    release-plz-patched
     update-docs
     ;
 
   fetch-schema-app = callPackage ./fetch-schema.nix { };
-  release-app = callPackage ./release.nix { inherit release-plz-patched; };
+  release-app = callPackage ./release.nix { };
 
   packages = {
-    inherit gen-docs gen-manpage release-plz-patched;
+    inherit gen-docs gen-manpage;
     default = jj-gh;
     dev = callPackage ./jj-gh-dev.nix { };
     udeps = callPackage ./udeps.nix { };

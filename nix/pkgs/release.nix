@@ -1,13 +1,12 @@
 {
   pkgs,
   rustToolchain,
-  release-plz-patched,
 }:
 pkgs.writeShellApplication {
   name = "release";
   runtimeInputs = [
     rustToolchain
-    release-plz-patched
+    pkgs.release-plz
     pkgs.cargo-semver-checks
     pkgs.git
   ];

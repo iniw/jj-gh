@@ -2,9 +2,9 @@
   description = "Configurable jj subcommand for GitHub PR workflows";
 
   inputs = {
+    nixpkgs.url = "github:nixos/nixpkgs/nixos-unstable";
     crane.url = "github:ipetkov/crane";
     flake-utils.url = "github:numtide/flake-utils";
-    nixpkgs.url = "github:nixos/nixpkgs/nixos-unstable";
     rust-overlay = {
       url = "github:oxalica/rust-overlay";
       inputs.nixpkgs.follows = "nixpkgs";
@@ -87,7 +87,6 @@
           fetch-schema-app
           jj-gh
           release-app
-          release-plz-patched
           update-docs
           ;
       in
@@ -130,7 +129,6 @@
             cargoArtifacts
             treefmtEval
             jj-gh
-            release-plz-patched
             update-docs
             ;
         };
