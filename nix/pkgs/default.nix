@@ -26,13 +26,7 @@ let
   commonArgs = {
     inherit src;
     strictDeps = true;
-    buildInputs =
-      (lib.optionals pkgs.stdenv.hostPlatform.isDarwin [
-        pkgs.libiconv
-      ])
-      ++ (lib.optionals pkgs.stdenv.hostPlatform.isLinux [
-        pkgs.openssl
-      ]);
+    buildInputs = lib.optionals pkgs.stdenv.hostPlatform.isLinux [ pkgs.openssl ];
     nativeBuildInputs = lib.optionals pkgs.stdenv.hostPlatform.isLinux [ pkgs.pkg-config ];
   };
 
