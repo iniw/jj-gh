@@ -4,7 +4,7 @@
   craneLib,
   commonArgs,
   cargoArtifacts,
-  treefmtEval,
+  treefmt,
   update-docs,
   jj-gh,
 }:
@@ -16,7 +16,7 @@ let
       craneLib
       commonArgs
       cargoArtifacts
-      treefmtEval
+      treefmt
       update-docs
       jj-gh
       ;

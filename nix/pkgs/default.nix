@@ -3,7 +3,7 @@
   craneLib,
   commonArgs,
   cargoArtifacts,
-  treefmtEval,
+  treefmt,
 }:
 let
   callPackage = pkgs.lib.callPackageWith {
@@ -12,7 +12,7 @@ let
       craneLib
       commonArgs
       cargoArtifacts
-      treefmtEval
+      treefmt
       ;
   };
 
