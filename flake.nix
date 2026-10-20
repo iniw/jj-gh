@@ -123,7 +123,9 @@
         jj-gh = self.packages.${final.stdenv.hostPlatform.system}.default;
       };
 
-      homeManagerModules.default = import ./nix/hm-module.nix self;
-      homeManagerModules.jj-gh = import ./nix/hm-module.nix self;
+      homeManagerModules = rec {
+        default = jj-gh;
+        jj-gh = import ./nix/hm-module.nix self;
+      };
     };
 }
