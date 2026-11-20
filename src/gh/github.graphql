@@ -115,6 +115,15 @@ type AddBlockedByPayload {
     clientMutationId: String
     issue: Issue
 }
+input AddCloseIssueReferencesInput {
+    clientMutationId: String
+    issueId: ID! @possibleTypes(concreteTypes: ["Issue"])
+    pullRequestIds: [ID!]! @possibleTypes(concreteTypes: ["PullRequest"])
+}
+type AddCloseIssueReferencesPayload {
+    clientMutationId: String
+    issue: Issue
+}
 input AddCommentInput {
     body: String!
     clientMutationId: String
@@ -305,6 +314,16 @@ type AddReactionPayload {
     reactionGroups: [ReactionGroup!]
     subject: Reactable
 }
+input AddRelatesToInput {
+    clientMutationId: String
+    issueId: ID! @possibleTypes(concreteTypes: ["Issue"])
+    relatedIssueId: ID! @possibleTypes(concreteTypes: ["Issue"])
+}
+type AddRelatesToPayload {
+    clientMutationId: String
+    issue: Issue
+    relatedIssue: Issue
+}
 input AddStarInput {
     clientMutationId: String
     starrableId: ID! @possibleTypes(concreteTypes: ["Gist", "Repository", "Topic"], abstractType: "Starrable")
@@ -377,6 +396,14 @@ type AddedToProjectV2Event implements Node & ProjectV2Event @docsCategory(name: 
     id: ID!
     project: ProjectV2
     wasAutomated: Boolean!
+}
+type AddedToStackEvent implements Node @docsCategory(name: "pulls") {
+    actor: Actor
+    createdAt: DateTime!
+    id: ID!
+    pullRequest: PullRequest
+    stackId: BigInt
+    stackNumber: Int
 }
 input AgentAssignmentInput @docsCategory(name: "users") {
     baseRef: String
@@ -1274,6 +1301,14 @@ type ClosedEvent implements Node & UniformResourceLocatable @docsCategory(name: 
     url: URI!
 }
 union Closer @docsCategory(name: "issues") = Commit | ProjectV2 | PullRequest
+type CodeCoverageParameters {
+    maxCoverageDrop: Float
+    minimumCoverage: Float
+}
+input CodeCoverageParametersInput {
+    maxCoverageDrop: Float
+    minimumCoverage: Float
+}
 type CodeOfConduct implements Node @docsCategory(name: "meta") {
     body: String
     id: ID!
@@ -1281,6 +1316,18 @@ type CodeOfConduct implements Node @docsCategory(name: "meta") {
     name: String!
     resourcePath: URI
     url: URI
+}
+type CodeQualityParameters @docsCategory(name: "code-scanning") {
+    severity: CodeQualitySeverity!
+}
+input CodeQualityParametersInput @docsCategory(name: "code-scanning") {
+    severity: CodeQualitySeverity!
+}
+enum CodeQualitySeverity @docsCategory(name: "code-scanning") {
+    ALL
+    ERRORS
+    NOTES
+    WARNINGS
 }
 type CodeScanningParameters @docsCategory(name: "repos") {
     codeScanningTools: [CodeScanningTool!]!
@@ -1862,6 +1909,18 @@ type ConvertedToDiscussionEvent implements Node @docsCategory(name: "issues") {
     discussion: Discussion
     id: ID!
 }
+enum CopilotCodeReviewEffort @docsCategory(name: "copilot") {
+    BALANCED
+    DYNAMIC
+    LITE
+    MAX
+}
+enum CopilotCodeReviewEffortLevel @docsCategory(name: "copilot") {
+    BALANCED
+    DYNAMIC
+    LITE
+    MAX
+}
 type CopilotCodeReviewParameters @docsCategory(name: "pulls") {
     reviewDraftPullRequests: Boolean!
     reviewOnPush: Boolean!
@@ -1869,6 +1928,37 @@ type CopilotCodeReviewParameters @docsCategory(name: "pulls") {
 input CopilotCodeReviewParametersInput @docsCategory(name: "pulls") {
     reviewDraftPullRequests: Boolean
     reviewOnPush: Boolean
+}
+enum CopilotCodeReviewRequestReason @docsCategory(name: "copilot") {
+    ACTOR_INELIGIBLE
+    APP_NOT_INSTALLED
+    LICENSED_ORGANIZATION_UNAVAILABLE
+    NO_QUOTA_REMAINING
+    REPOSITORY_INELIGIBLE
+    REQUEST_CONFLICT
+}
+enum CopilotCodeReviewRunnerConfiguredBy @docsCategory(name: "copilot") {
+    CODE_REVIEW
+    CODING_AGENT
+}
+enum CopilotCodeReviewRunnerType @docsCategory(name: "copilot") {
+    LABELED
+    STANDARD
+}
+enum CopilotCodeReviewSeverityFilter @docsCategory(name: "copilot") {
+    LOW
+    LOW_AND_MEDIUM
+    NO_FILTER
+}
+type CopilotCodeReviewSource @docsCategory(name: "pulls") {
+    kind: CopilotCodeReviewSourceKind!
+    name: String!
+    path: String
+}
+enum CopilotCodeReviewSourceKind @docsCategory(name: "pulls") {
+    CUSTOM_INSTRUCTIONS
+    MCP
+    SKILL
 }
 type CopilotEndpoints @docsCategory(name: "copilot") {
     api: String!
@@ -2057,7 +2147,7 @@ input CreateIssueFieldInput {
     description: String
     name: String!
     options: [IssueFieldSingleSelectOptionInput!]
-    ownerId: ID! @possibleTypes(concreteTypes: ["Organization"])
+    ownerId: ID! @possibleTypes(concreteTypes: ["Organization", "User"])
     visibility: IssueFieldVisibility
 }
 type CreateIssueFieldPayload {
@@ -2092,6 +2182,7 @@ input CreateIssueInput {
     projectIds: [ID!] @possibleTypes(concreteTypes: ["Project"])
     projectV2Ids: [ID!] @possibleTypes(concreteTypes: ["ProjectV2"])
     repositoryId: ID! @possibleTypes(concreteTypes: ["Repository"])
+    statusId: ID @possibleTypes(concreteTypes: ["PlanningStatus"])
     title: String!
 }
 type CreateIssuePayload {
@@ -2104,7 +2195,7 @@ input CreateIssueTypeInput {
     description: String
     isEnabled: Boolean!
     name: String!
-    ownerId: ID!
+    ownerId: ID! @possibleTypes(concreteTypes: ["Organization", "User"])
 }
 type CreateIssueTypePayload {
     clientMutationId: String
@@ -3079,6 +3170,7 @@ enum DiffSide @docsCategory(name: "pulls") {
 }
 input DisablePullRequestAutoMergeInput {
     clientMutationId: String
+    includeStack: Boolean = false
     pullRequestId: ID! @possibleTypes(concreteTypes: ["PullRequest"])
 }
 type DisablePullRequestAutoMergePayload {
@@ -3429,6 +3521,7 @@ input EnablePullRequestAutoMergeInput {
     commitBody: String
     commitHeadline: String
     expectedHeadOid: GitObjectID
+    includeStack: Boolean = false
     mergeMethod: PullRequestMergeMethod = MERGE
     pullRequestId: ID! @possibleTypes(concreteTypes: ["PullRequest"])
 }
@@ -3454,6 +3547,7 @@ type Enterprise implements Node @docsCategory(name: "enterprise-admin") {
   ): URI!
     billingEmail: String
     billingInfo: EnterpriseBillingInfo
+    copilotCodeReviewPolicy: EnterpriseCopilotCodeReviewPolicy
     createdAt: DateTime!
     databaseId: Int
     description: String
@@ -3468,8 +3562,19 @@ type Enterprise implements Node @docsCategory(name: "enterprise-admin") {
         last: Int
         orderBy: EnterpriseTeamOrder = {field: ID, direction: ASC}
         query: String
+        userLogins: [String!]
   ): EnterpriseTeamConnection!
     id: ID!
+    innersourceVulnerabilities(
+        after: String
+        before: String
+        ecosystem: SecurityAdvisoryEcosystem
+        first: Int
+        last: Int
+        orderBy: SecurityVulnerabilityOrder = {field: UPDATED_AT, direction: DESC}
+        package: String
+        severities: [SecurityAdvisorySeverity!]
+  ): SecurityVulnerabilityConnection!
     location: String
     members(
         after: String
@@ -3603,6 +3708,14 @@ type EnterpriseConnection {
     nodes: [Enterprise]
     pageInfo: PageInfo!
     totalCount: Int!
+}
+type EnterpriseCopilotCodeReviewPolicy @docsCategory(name: "copilot") {
+    policyState: EnterpriseCopilotCodeReviewPolicyState
+}
+enum EnterpriseCopilotCodeReviewPolicyState @docsCategory(name: "copilot") {
+    CONFIGURED_BY_ORGANIZATION_ADMINS
+    DISABLED_FOR_ALL_ORGANIZATIONS
+    ENABLED_FOR_ALL_ORGANIZATIONS
 }
 enum EnterpriseDefaultRepositoryPermissionSettingValue @docsCategory(name: "enterprise-admin") {
     ADMIN
@@ -4401,9 +4514,11 @@ input FileExtensionRestrictionParametersInput @docsCategory(name: "repos") {
     restrictedFileExtensions: [String!]!
 }
 type FilePathRestrictionParameters @docsCategory(name: "repos") {
+    ignoredFilePaths: [String!]
     restrictedFilePaths: [String!]!
 }
 input FilePathRestrictionParametersInput @docsCategory(name: "repos") {
+    ignoredFilePaths: [String!]
     restrictedFilePaths: [String!]!
 }
 enum FileViewedState @docsCategory(name: "pulls") {
@@ -4847,6 +4962,7 @@ type Issue implements Assignable &
     closedByPullRequestsReferences(
         after: String
         before: String
+        excludeUserLinked: Boolean = false
         first: Int
         includeClosedPrs: Boolean = false
         last: Int
@@ -4865,10 +4981,6 @@ type Issue implements Assignable &
     databaseId: Int
     duplicateOf: Issue
     editor: Actor
-    eventRationales: [IssueEventRationale!]!
-    @deprecated(
-      reason: "Use the `intent` field on individual timeline events instead. This field is being removed and now always returns an empty list."
-    )
     fullDatabaseId: BigInt
     hovercard(
         includeNotificationContexts: Boolean = true
@@ -4950,12 +5062,20 @@ type Issue implements Assignable &
         last: Int
         orderBy: ReactionOrder
   ): ReactionConnection!
+    relatesTo(
+        after: String
+        before: String
+        first: Int
+        last: Int
+        orderBy: IssueRelatesToOrder = {field: RELATES_TO_ADDED_AT, direction: DESC}
+  ): IssueConnection!
     repository: Repository!
     resourcePath: URI!
     state: IssueState!
     stateReason(
         enableDuplicate: Boolean = false
   ): IssueStateReason
+    status: PlanningStatus
     subIssues(
         after: String
         before: String
@@ -5020,6 +5140,7 @@ type Issue implements Assignable &
     viewerCanReopen: Boolean!
     viewerCanSetFields: Boolean
     viewerCanSetMilestone: Boolean!
+    viewerCanSetStatus: Boolean!
     viewerCanSubscribe: Boolean!
     viewerCanType: Boolean
     viewerCanUpdate: Boolean!
@@ -5166,22 +5287,6 @@ enum IssueEventConfidenceLevel @docsCategory(name: "issues") {
     LOW
     MEDIUM
 }
-type IssueEventRationale @docsCategory(name: "issues") {
-    actor: Actor
-    createdAt: DateTime!
-    issueEvent: IssueEventWithRationale
-    rationale: String!
-}
-union IssueEventWithRationale @docsCategory(name: "issues") =
-  | ClosedEvent
-  | IssueFieldAddedEvent
-  | IssueFieldChangedEvent
-  | IssueFieldRemovedEvent
-  | IssueTypeAddedEvent
-  | IssueTypeChangedEvent
-  | IssueTypeRemovedEvent
-  | LabeledEvent
-  | UnlabeledEvent
 type IssueFieldAddedEvent implements Node @docsCategory(name: "issues") {
     actor: Actor
     color: String
@@ -5190,8 +5295,6 @@ type IssueFieldAddedEvent implements Node @docsCategory(name: "issues") {
     intent: IssueUpdateIntent
     issueField: IssueFields
     options: [IssueFieldTimelineOption!]
-    rationale: IssueEventRationale
-    @deprecated(reason: "Use `intent` instead. This field is being removed and now always returns null.")
     value: String
 }
 type IssueFieldChangedEvent implements Node @docsCategory(name: "issues") {
@@ -5206,8 +5309,6 @@ type IssueFieldChangedEvent implements Node @docsCategory(name: "issues") {
     previousColor: String
     previousOptions: [IssueFieldTimelineOption!]
     previousValue: String
-    rationale: IssueEventRationale
-    @deprecated(reason: "Use `intent` instead. This field is being removed and now always returns null.")
 }
 interface IssueFieldCommon @docsCategory(name: "issues") {
     createdAt: DateTime!
@@ -5295,8 +5396,6 @@ type IssueFieldRemovedEvent implements Node @docsCategory(name: "issues") {
     intent: IssueUpdateIntent
     issueField: IssueFields
     options: [IssueFieldTimelineOption!]
-    rationale: IssueEventRationale
-    @deprecated(reason: "Use `intent` instead. This field is being removed and now always returns null.")
 }
 type IssueFieldSingleSelect implements IssueFieldCommon & Node @docsCategory(name: "issues") {
     createdAt: DateTime!
@@ -5360,6 +5459,17 @@ type IssueFieldTimelineOption @docsCategory(name: "issues") {
     color: String
     name: String!
 }
+input IssueFieldUpdateInput @docsCategory(name: "issues") {
+    fieldName: String!
+    operation: IssueFieldUpdateOperation!
+    value: String
+}
+enum IssueFieldUpdateOperation @docsCategory(name: "issues") {
+    ADD
+    CLEAR
+    REMOVE
+    SET
+}
 union IssueFieldValue @docsCategory(name: "issues") =
   | IssueFieldDateValue
   | IssueFieldMultiSelectValue
@@ -5392,7 +5502,8 @@ input IssueFieldValueFilter {
 }
 enum IssueFieldVisibility @docsCategory(name: "issues") {
     ALL
-    ORG_ONLY
+    ORG_ONLY @deprecated(reason: "`ORG_ONLY` will be removed. Use `RESTRICTED` instead. Removal on 2027-04-01 UTC.")
+    RESTRICTED
 }
 union IssueFields @docsCategory(name: "issues") =
   | IssueFieldDate
@@ -5432,6 +5543,14 @@ enum IssueOrderField @docsCategory(name: "issues") {
     COMMENTS
     CREATED_AT
     UPDATED_AT
+}
+input IssueRelatesToOrder @docsCategory(name: "issues") {
+    direction: OrderDirection!
+    field: IssueRelatesToOrderField!
+}
+enum IssueRelatesToOrderField @docsCategory(name: "issues") {
+    CREATED_AT
+    RELATES_TO_ADDED_AT
 }
 enum IssueSearchType @docsCategory(name: "issues") {
     HYBRID
@@ -5654,8 +5773,6 @@ type IssueTypeAddedEvent implements Node @docsCategory(name: "issues") {
     id: ID!
     intent: IssueUpdateIntent
     issueType: IssueType
-    rationale: IssueEventRationale
-    @deprecated(reason: "Use `intent` instead. This field is being removed and now always returns null.")
 }
 type IssueTypeChangedEvent implements Node @docsCategory(name: "issues") {
     actor: Actor
@@ -5664,8 +5781,6 @@ type IssueTypeChangedEvent implements Node @docsCategory(name: "issues") {
     intent: IssueUpdateIntent
     issueType: IssueType
     prevIssueType: IssueType
-    rationale: IssueEventRationale
-    @deprecated(reason: "Use `intent` instead. This field is being removed and now always returns null.")
 }
 enum IssueTypeColor @docsCategory(name: "issues") {
     BLUE
@@ -5701,8 +5816,6 @@ type IssueTypeRemovedEvent implements Node @docsCategory(name: "issues") {
     id: ID!
     intent: IssueUpdateIntent
     issueType: IssueType
-    rationale: IssueEventRationale
-    @deprecated(reason: "Use `intent` instead. This field is being removed and now always returns null.")
 }
 input IssueTypeUpdateInput @docsCategory(name: "issues") {
     confidence: IssueEventConfidenceLevel
@@ -5798,8 +5911,6 @@ type LabeledEvent implements Node @docsCategory(name: "issues") {
     intent: IssueUpdateIntent
     label: Label!
     labelable: Labelable!
-    rationale: IssueEventRationale
-    @deprecated(reason: "Use `intent` instead. This field is being removed and now always returns null.")
 }
 type Language implements Node @docsCategory(name: "repos") {
     color: String
@@ -6087,9 +6198,11 @@ input MaxFilePathLengthParametersInput @docsCategory(name: "repos") {
     maxFilePathLength: Int!
 }
 type MaxFileSizeParameters @docsCategory(name: "repos") {
+    ignoredFilePaths: [String!]
     maxFileSize: Int!
 }
 input MaxFileSizeParametersInput @docsCategory(name: "repos") {
+    ignoredFilePaths: [String!]
     maxFileSize: Int!
 }
 type MemberFeatureRequestNotification implements Node @docsCategory(name: "orgs") {
@@ -6697,6 +6810,9 @@ type Mutation @docsCategory(name: "meta") {
     addBlockedBy(
         input: AddBlockedByInput!
   ): AddBlockedByPayload @docsCategory(name: "issues")
+    addCloseIssueReferences(
+        input: AddCloseIssueReferencesInput!
+  ): AddCloseIssueReferencesPayload @docsCategory(name: "issues")
     addComment(
         input: AddCommentInput!
   ): AddCommentPayload @docsCategory(name: "issues")
@@ -6753,6 +6869,9 @@ type Mutation @docsCategory(name: "meta") {
     addReaction(
         input: AddReactionInput!
   ): AddReactionPayload @docsCategory(name: "reactions")
+    addRelatesTo(
+        input: AddRelatesToInput!
+  ): AddRelatesToPayload @docsCategory(name: "issues")
     addStar(
         input: AddStarInput!
   ): AddStarPayload @docsCategory(name: "activity")
@@ -7174,6 +7293,9 @@ type Mutation @docsCategory(name: "meta") {
     removeBlockedBy(
         input: RemoveBlockedByInput!
   ): RemoveBlockedByPayload @docsCategory(name: "issues")
+    removeCloseIssueReferences(
+        input: RemoveCloseIssueReferencesInput!
+  ): RemoveCloseIssueReferencesPayload @docsCategory(name: "issues")
     removeEnterpriseAdmin(
         input: RemoveEnterpriseAdminInput!
   ): RemoveEnterpriseAdminPayload @docsCategory(name: "enterprise-admin")
@@ -7201,6 +7323,9 @@ type Mutation @docsCategory(name: "meta") {
     removeReaction(
         input: RemoveReactionInput!
   ): RemoveReactionPayload @docsCategory(name: "reactions")
+    removeRelatesTo(
+        input: RemoveRelatesToInput!
+  ): RemoveRelatesToPayload @docsCategory(name: "issues")
     removeStar(
         input: RemoveStarInput!
   ): RemoveStarPayload @docsCategory(name: "activity")
@@ -7228,6 +7353,9 @@ type Mutation @docsCategory(name: "meta") {
     reprioritizeSubIssue(
         input: ReprioritizeSubIssueInput!
   ): ReprioritizeSubIssuePayload @docsCategory(name: "issues")
+    requestCopilotCodeReview(
+        input: RequestCopilotCodeReviewInput!
+  ): RequestCopilotCodeReviewPayload @docsCategory(name: "pulls")
     requestReviews(
         input: RequestReviewsInput!
   ): RequestReviewsPayload @docsCategory(name: "pulls")
@@ -7237,6 +7365,9 @@ type Mutation @docsCategory(name: "meta") {
     rerequestCheckSuite(
         input: RerequestCheckSuiteInput!
   ): RerequestCheckSuitePayload @docsCategory(name: "checks")
+    rerequestReviews(
+        input: RerequestReviewsInput!
+  ): RerequestReviewsPayload @docsCategory(name: "pulls")
     resolveReviewThread(
         input: ResolveReviewThreadInput!
   ): ResolveReviewThreadPayload @docsCategory(name: "pulls")
@@ -7258,6 +7389,9 @@ type Mutation @docsCategory(name: "meta") {
     setIssueFieldValue(
         input: SetIssueFieldValueInput!
   ): SetIssueFieldValuePayload @docsCategory(name: "issues")
+    setIssueStatus(
+        input: SetIssueStatusInput!
+  ): SetIssueStatusPayload @docsCategory(name: "issues")
     setOrganizationInteractionLimit(
         input: SetOrganizationInteractionLimitInput!
   ): SetOrganizationInteractionLimitPayload @docsCategory(name: "orgs")
@@ -7361,6 +7495,9 @@ type Mutation @docsCategory(name: "meta") {
     updateEnterpriseAllowPrivateRepositoryForkingSetting(
         input: UpdateEnterpriseAllowPrivateRepositoryForkingSettingInput!
   ): UpdateEnterpriseAllowPrivateRepositoryForkingSettingPayload @docsCategory(name: "enterprise-admin")
+    updateEnterpriseCopilotCodeReviewPolicy(
+        input: UpdateEnterpriseCopilotCodeReviewPolicyInput!
+  ): UpdateEnterpriseCopilotCodeReviewPolicyPayload @docsCategory(name: "copilot")
     updateEnterpriseDefaultRepositoryPermissionSetting(
         input: UpdateEnterpriseDefaultRepositoryPermissionSettingInput!
   ): UpdateEnterpriseDefaultRepositoryPermissionSettingPayload @docsCategory(name: "enterprise-admin")
@@ -7400,9 +7537,6 @@ type Mutation @docsCategory(name: "meta") {
     updateEnterpriseProfile(
         input: UpdateEnterpriseProfileInput!
   ): UpdateEnterpriseProfilePayload @docsCategory(name: "enterprise-admin")
-    updateEnterpriseProofOfPresenceRequiredSetting(
-        input: UpdateEnterpriseProofOfPresenceRequiredSettingInput!
-  ): UpdateEnterpriseProofOfPresenceRequiredSettingPayload @docsCategory(name: "enterprise-admin")
     updateEnterpriseRepositoryProjectsSetting(
         input: UpdateEnterpriseRepositoryProjectsSettingInput!
   ): UpdateEnterpriseRepositoryProjectsSettingPayload @docsCategory(name: "enterprise-admin")
@@ -7454,6 +7588,15 @@ type Mutation @docsCategory(name: "meta") {
     updateOrganizationAllowPrivateRepositoryForkingSetting(
         input: UpdateOrganizationAllowPrivateRepositoryForkingSettingInput!
   ): UpdateOrganizationAllowPrivateRepositoryForkingSettingPayload @docsCategory(name: "orgs")
+    updateOrganizationCopilotCodeReviewPolicy(
+        input: UpdateOrganizationCopilotCodeReviewPolicyInput!
+  ): UpdateOrganizationCopilotCodeReviewPolicyPayload @docsCategory(name: "copilot")
+    updateOrganizationCopilotCodeReviewRunnerConfiguration(
+        input: UpdateOrganizationCopilotCodeReviewRunnerConfigurationInput!
+  ): UpdateOrganizationCopilotCodeReviewRunnerConfigurationPayload @docsCategory(name: "copilot")
+    updateOrganizationCopilotCodeReviewSettings(
+        input: UpdateOrganizationCopilotCodeReviewSettingsInput!
+  ): UpdateOrganizationCopilotCodeReviewSettingsPayload @docsCategory(name: "copilot")
     updateOrganizationWebCommitSignoffSetting(
         input: UpdateOrganizationWebCommitSignoffSettingInput!
   ): UpdateOrganizationWebCommitSignoffSettingPayload @docsCategory(name: "orgs")
@@ -7526,6 +7669,9 @@ type Mutation @docsCategory(name: "meta") {
     updateRepository(
         input: UpdateRepositoryInput!
   ): UpdateRepositoryPayload @docsCategory(name: "repos")
+    updateRepositoryCopilotCodeReviewSettings(
+        input: UpdateRepositoryCopilotCodeReviewSettingsInput!
+  ): UpdateRepositoryCopilotCodeReviewSettingsPayload @docsCategory(name: "copilot")
     updateRepositoryCustomProperty(
         input: UpdateRepositoryCustomPropertyInput!
   ): UpdateRepositoryCustomPropertyPayload @docsCategory(name: "repos")
@@ -10030,6 +10176,8 @@ type Organization implements Actor &
     avatarUrl(
         size: Int
   ): URI!
+    copilotCodeReviewRunnerConfiguration: OrganizationCopilotCodeReviewRunnerConfiguration
+    copilotCodeReviewSettings: OrganizationCopilotCodeReviewSettings
     createdAt: DateTime!
     databaseId: Int
     description: String
@@ -10056,6 +10204,16 @@ type Organization implements Actor &
     estimatedNextSponsorsPayoutInCents: Int!
     hasSponsorsListing: Boolean!
     id: ID!
+    innersourceVulnerabilities(
+        after: String
+        before: String
+        ecosystem: SecurityAdvisoryEcosystem
+        first: Int
+        last: Int
+        orderBy: SecurityVulnerabilityOrder = {field: UPDATED_AT, direction: DESC}
+        package: String
+        severities: [SecurityAdvisorySeverity!]
+  ): SecurityVulnerabilityConnection!
     interactionAbility: RepositoryInteractionAbility
     ipAllowListEnabledSetting: IpAllowListEnabledSettingValue!
     ipAllowListEntries(
@@ -10123,6 +10281,7 @@ type Organization implements Actor &
     newTeamUrl: URI!
     notificationDeliveryRestrictionEnabledSetting: NotificationRestrictionSettingValue!
     organizationBillingEmail: String
+    organizationCopilotCodeReviewPolicy: OrganizationCopilotCodeReviewPolicy
     packages(
         after: String
         before: String
@@ -10151,6 +10310,7 @@ type Organization implements Actor &
         before: String
         first: Int
         last: Int
+        orderBy: PinnedIssueFieldOrder = {field: POSITION, direction: ASC}
   ): IssueFieldsConnection
     pinnedItems(
         after: String
@@ -10160,6 +10320,12 @@ type Organization implements Actor &
         types: [PinnableItemType!]
   ): PinnableItemConnection!
     pinnedItemsRemaining: Int!
+    planningStatuses(
+        after: String
+        before: String
+        first: Int
+        last: Int
+  ): PlanningStatusConnection
     project(
         number: Int!
   ): Project
@@ -10465,6 +10631,51 @@ type OrganizationConnection {
     pageInfo: PageInfo!
     totalCount: Int!
 }
+type OrganizationCopilotCodeReviewDefaultEffort @docsCategory(name: "copilot") {
+    configured: CopilotCodeReviewEffortLevel
+    editable: Boolean!
+    effective: CopilotCodeReviewEffortLevel!
+    githubDefault: CopilotCodeReviewEffortLevel!
+    managedBy: OrganizationCopilotCodeReviewPolicyManager!
+}
+enum OrganizationCopilotCodeReviewEffortSetting @docsCategory(name: "copilot") {
+    BALANCED
+    DYNAMIC
+    INHERIT
+    LITE
+    MAX
+}
+type OrganizationCopilotCodeReviewPolicy @docsCategory(name: "copilot") {
+    configuredState: OrganizationCopilotCodeReviewPolicyState
+    editable: Boolean!
+    effectiveState: OrganizationCopilotCodeReviewPolicyState!
+    managedBy: OrganizationCopilotCodeReviewPolicyManager!
+}
+enum OrganizationCopilotCodeReviewPolicyConflict @docsCategory(name: "copilot") {
+    POLICY_MANAGED_BY_ENTERPRISE
+}
+enum OrganizationCopilotCodeReviewPolicyManager @docsCategory(name: "copilot") {
+    ENTERPRISE
+    ORGANIZATION
+}
+enum OrganizationCopilotCodeReviewPolicyState @docsCategory(name: "copilot") {
+    DISABLED
+    ENABLED
+}
+type OrganizationCopilotCodeReviewRunnerConfiguration @docsCategory(name: "copilot") {
+    allowRepositoryCustomization: Boolean!
+    configuredBy: CopilotCodeReviewRunnerConfiguredBy!
+    runnerGroupName: String
+    runnerLabels: [String!]!
+    runnerType: CopilotCodeReviewRunnerType!
+}
+type OrganizationCopilotCodeReviewSettings @docsCategory(name: "copilot") {
+    availableReviewEfforts: [CopilotCodeReviewEffortLevel!]!
+    defaultReviewEffort: OrganizationCopilotCodeReviewDefaultEffort!
+}
+enum OrganizationCopilotCodeReviewSettingsConflict @docsCategory(name: "copilot") {
+    SETTING_NOT_EDITABLE
+}
 type OrganizationEdge {
     cursor: String!
     node: Organization
@@ -10530,6 +10741,7 @@ enum OrganizationInvitationRole @docsCategory(name: "orgs") {
     REINSTATE
 }
 enum OrganizationInvitationSource @docsCategory(name: "orgs") {
+    ENTERPRISE_ORGANIZATION_CREATION
     MEMBER
     SCIM
     UNKNOWN
@@ -10806,24 +11018,27 @@ enum PatchStatus @docsCategory(name: "pulls") {
     MODIFIED
     RENAMED
 }
-type PendingAssigneeSuggestion @docsCategory(name: "issues") {
+type PendingAssigneeSuggestion implements Node @docsCategory(name: "issues") {
     actor: Actor
     assignee: Assignee
     createdAt: DateTime!
+    id: ID!
     rationale: String
     updatedAt: DateTime
 }
-type PendingCloseSuggestion @docsCategory(name: "issues") {
+type PendingCloseSuggestion implements Node @docsCategory(name: "issues") {
     actor: Actor
     createdAt: DateTime!
     duplicateOf: IssueOrPullRequest
+    id: ID!
     rationale: String
     stateReason: IssueStateReason
     updatedAt: DateTime
 }
-type PendingFieldSuggestion @docsCategory(name: "issues") {
+type PendingFieldSuggestion implements Node @docsCategory(name: "issues") {
     actor: Actor
     createdAt: DateTime!
+    id: ID!
     issueField: IssueFields
     rationale: String
     suggestedValue: String
@@ -10849,16 +11064,18 @@ input PendingIssueSuggestionRef @docsCategory(name: "issues") {
     kind: PendingIssueSuggestionKind!
     labelId: ID
 }
-type PendingLabelSuggestion @docsCategory(name: "issues") {
+type PendingLabelSuggestion implements Node @docsCategory(name: "issues") {
     actor: Actor
     createdAt: DateTime!
+    id: ID!
     label: Label
     rationale: String
     updatedAt: DateTime
 }
-type PendingTypeSuggestion @docsCategory(name: "issues") {
+type PendingTypeSuggestion implements Node @docsCategory(name: "issues") {
     actor: Actor
     createdAt: DateTime!
+    id: ID!
     issueType: IssueType
     rationale: String
     updatedAt: DateTime
@@ -11018,6 +11235,34 @@ type PinnedIssueConnection {
 type PinnedIssueEdge {
     cursor: String!
     node: PinnedIssue
+}
+input PinnedIssueFieldOrder @docsCategory(name: "issues") {
+    direction: OrderDirection!
+    field: PinnedIssueFieldOrderField!
+}
+enum PinnedIssueFieldOrderField @docsCategory(name: "issues") {
+    POSITION
+}
+type PlanningStatus implements Node @docsCategory(name: "issues") {
+    category: PlanningStatusCategory!
+    id: ID!
+    name: String!
+}
+type PlanningStatusCategory @docsCategory(name: "issues") {
+    key: String!
+    name: String!
+    state: IssueState!
+    stateReason: IssueStateReason
+}
+type PlanningStatusConnection {
+    edges: [PlanningStatusEdge]
+    nodes: [PlanningStatus]
+    pageInfo: PageInfo!
+    totalCount: Int!
+}
+type PlanningStatusEdge {
+    cursor: String!
+    node: PlanningStatus
 }
 scalar PreciseDateTime
 type PrivateRepositoryForkingDisableAuditEntry implements AuditEntry &
@@ -11993,6 +12238,7 @@ enum ProjectV2ItemType @docsCategory(name: "projects") {
 }
 input ProjectV2Iteration @docsCategory(name: "projects") {
     duration: Int!
+    id: String
     startDate: Date!
     title: String!
 }
@@ -12376,12 +12622,6 @@ type PromoteRepositoryCustomPropertyPayload {
     clientMutationId: String
     repositoryCustomProperty: RepositoryCustomProperty
 }
-enum ProofOfPresenceRequirement @docsCategory(name: "enterprise-admin") {
-    MFA
-    NO_POLICY
-    REAUTH
-    SECURITY_KEY
-}
 type PropertyTargetDefinition @docsCategory(name: "repos") {
     name: String!
     propertyValues: [String!]!
@@ -12448,7 +12688,9 @@ type PullRequest implements Assignable &
   ): UserConnection!
     author: Actor
     authorAssociation: CommentAuthorAssociation!
-    autoMergeRequest: AutoMergeRequest
+    autoMergeRequest(
+        includeStack: Boolean = false
+  ): AutoMergeRequest
     baseRef: Ref
     baseRefName: String!
     baseRefOid: GitObjectID!
@@ -12465,6 +12707,7 @@ type PullRequest implements Assignable &
     closingIssuesReferences(
         after: String
         before: String
+        excludeUserLinked: Boolean = false
         first: Int
         last: Int
         orderBy: IssueOrder
@@ -12669,9 +12912,13 @@ type PullRequest implements Assignable &
     viewerCanAssign: Boolean!
     viewerCanClose: Boolean!
     viewerCanDeleteHeadRef: Boolean!
-    viewerCanDisableAutoMerge: Boolean!
+    viewerCanDisableAutoMerge(
+        includeStack: Boolean = false
+  ): Boolean!
     viewerCanEditFiles: Boolean!
-    viewerCanEnableAutoMerge: Boolean!
+    viewerCanEnableAutoMerge(
+        includeStack: Boolean = false
+  ): Boolean!
     viewerCanLabel: Boolean!
     viewerCanMergeAsAdmin: Boolean!
     viewerCanReact: Boolean!
@@ -12798,6 +13045,7 @@ type PullRequestParameters @docsCategory(name: "pulls") {
     dismissStaleReviewsOnPush: Boolean!
     dismissalRestriction: DismissalRestriction
     requireCodeOwnerReview: Boolean!
+    requireExtraApprovalForUnattributedChanges: Boolean!
     requireLastPushApproval: Boolean!
     requiredApprovingReviewCount: Int!
     requiredReviewThreadResolution: Boolean!
@@ -12808,6 +13056,7 @@ input PullRequestParametersInput @docsCategory(name: "pulls") {
     dismissStaleReviewsOnPush: Boolean!
     dismissalRestriction: DismissalRestrictionInput
     requireCodeOwnerReview: Boolean!
+    requireExtraApprovalForUnattributedChanges: Boolean
     requireLastPushApproval: Boolean!
     requiredApprovingReviewCount: Int!
     requiredReviewThreadResolution: Boolean!
@@ -12834,6 +13083,7 @@ type PullRequestReview implements Comment &
         last: Int
   ): PullRequestReviewCommentConnection!
     commit: Commit
+    copilotCodeReviewEffort: CopilotCodeReviewEffort
     createdAt: DateTime!
     createdViaEmail: Boolean!
     databaseId: Int
@@ -12844,6 +13094,7 @@ type PullRequestReview implements Comment &
     fullDatabaseId: BigInt
     id: ID!
     includesCreatedEdit: Boolean!
+    isCopilotCodeReview: Boolean!
     isMinimized: Boolean!
     lastEditedAt: DateTime
     minimizedReason: String
@@ -12898,6 +13149,7 @@ type PullRequestReviewComment implements Comment &
     bodyHTML: HTML!
     bodyText: String!
     commit: Commit
+    copilotCodeReviewSources: [CopilotCodeReviewSource!]!
     createdAt: DateTime!
     createdViaEmail: Boolean!
     databaseId: Int
@@ -12910,6 +13162,7 @@ type PullRequestReviewComment implements Comment &
     fullDatabaseId: BigInt
     id: ID!
     includesCreatedEdit: Boolean!
+    isCopilotCodeReview: Boolean!
     isMinimized: Boolean!
     lastEditedAt: DateTime
     line: Int
@@ -13048,6 +13301,11 @@ type PullRequestReviewThreadEdge {
     cursor: String!
     node: PullRequestReviewThread
 }
+enum PullRequestReviewThreadResolutionReason @docsCategory(name: "pulls") {
+    ADDRESSED
+    INVALID
+    WONT_FIX
+}
 enum PullRequestReviewThreadSubjectType @docsCategory(name: "pulls") {
     FILE
     LINE
@@ -13168,6 +13426,7 @@ union PullRequestTimelineItems @docsCategory(name: "pulls") =
   | AddedToMergeQueueEvent
   | AddedToProjectEvent
   | AddedToProjectV2Event
+  | AddedToStackEvent
   | AssignedEvent
   | AutoMergeDisabledEvent
   | AutoMergeEnabledEvent
@@ -13227,6 +13486,7 @@ union PullRequestTimelineItems @docsCategory(name: "pulls") =
   | RemovedFromMergeQueueEvent
   | RemovedFromProjectEvent
   | RemovedFromProjectV2Event
+  | RemovedFromStackEvent
   | RenamedTitleEvent
   | ReopenedEvent
   | ReviewDismissedEvent
@@ -13260,6 +13520,7 @@ enum PullRequestTimelineItemsItemType {
     ADDED_TO_MERGE_QUEUE_EVENT
     ADDED_TO_PROJECT_EVENT
     ADDED_TO_PROJECT_V2_EVENT
+    ADDED_TO_STACK_EVENT
     ARCHIVED_EVENT
     ASSIGNED_EVENT
     AUTOMATIC_BASE_CHANGE_FAILED_EVENT
@@ -13320,6 +13581,7 @@ enum PullRequestTimelineItemsItemType {
     REMOVED_FROM_MERGE_QUEUE_EVENT
     REMOVED_FROM_PROJECT_EVENT
     REMOVED_FROM_PROJECT_V2_EVENT
+    REMOVED_FROM_STACK_EVENT
     RENAMED_TITLE_EVENT
     REOPENED_EVENT
     REVIEW_DISMISSED_EVENT
@@ -13463,9 +13725,11 @@ type Query implements Node @docsCategory(name: "meta") {
         epssPercentile: Float
         first: Int
         identifier: SecurityAdvisoryIdentifierFilter
+        isWithdrawn: Boolean
         last: Int
         orderBy: SecurityAdvisoryOrder = {field: UPDATED_AT, direction: DESC}
         publishedSince: DateTime
+        severities: [SecurityAdvisorySeverity!]
         updatedSince: DateTime
   ): SecurityAdvisoryConnection!
     securityAdvisory(
@@ -13850,6 +14114,15 @@ type RemoveBlockedByPayload {
     clientMutationId: String
     issue: Issue
 }
+input RemoveCloseIssueReferencesInput {
+    clientMutationId: String
+    issueId: ID! @possibleTypes(concreteTypes: ["Issue"])
+    pullRequestIds: [ID!]! @possibleTypes(concreteTypes: ["PullRequest"])
+}
+type RemoveCloseIssueReferencesPayload {
+    clientMutationId: String
+    issue: Issue
+}
 input RemoveEnterpriseAdminInput {
     clientMutationId: String
     enterpriseId: ID! @possibleTypes(concreteTypes: ["Enterprise"])
@@ -13953,6 +14226,16 @@ type RemoveReactionPayload {
     reactionGroups: [ReactionGroup!]
     subject: Reactable
 }
+input RemoveRelatesToInput {
+    clientMutationId: String
+    issueId: ID! @possibleTypes(concreteTypes: ["Issue"])
+    relatedIssueId: ID! @possibleTypes(concreteTypes: ["Issue"])
+}
+type RemoveRelatesToPayload {
+    clientMutationId: String
+    issue: Issue
+    relatedIssue: Issue
+}
 input RemoveStarInput {
     clientMutationId: String
     starrableId: ID! @possibleTypes(concreteTypes: ["Gist", "Repository", "Topic"], abstractType: "Starrable")
@@ -14012,6 +14295,14 @@ type RemovedFromProjectV2Event implements Node & ProjectV2Event @docsCategory(na
     id: ID!
     project: ProjectV2
     wasAutomated: Boolean!
+}
+type RemovedFromStackEvent implements Node @docsCategory(name: "pulls") {
+    actor: Actor
+    createdAt: DateTime!
+    id: ID!
+    pullRequest: PullRequest
+    stackId: BigInt
+    stackNumber: Int
 }
 type RenamedTitleEvent implements Node @docsCategory(name: "issues") {
     actor: Actor
@@ -15763,6 +16054,7 @@ type Repository implements Node &
         privacy: RepositoryPrivacy
         visibility: RepositoryVisibility
   ): RepositoryConnection!
+    fullDatabaseId: BigInt
     fundingLinks: [FundingLink!]!
     hasDiscussionsEnabled: Boolean!
     hasIssuesEnabled: Boolean!
@@ -15900,6 +16192,13 @@ type Repository implements Node &
         last: Int
         orderBy: PinnedEnvironmentOrder = {field: POSITION, direction: ASC}
   ): PinnedEnvironmentConnection
+    pinnedIssueFields(
+        after: String
+        before: String
+        first: Int
+        last: Int
+        orderBy: PinnedIssueFieldOrder = {field: POSITION, direction: ASC}
+  ): IssueFieldsConnection
     pinnedIssues(
         after: String
         before: String
@@ -15907,6 +16206,12 @@ type Repository implements Node &
         last: Int
   ): PinnedIssueConnection
     planFeatures: RepositoryPlanFeatures!
+    planningStatuses(
+        after: String
+        before: String
+        first: Int
+        last: Int
+  ): PlanningStatusConnection
     primaryLanguage: Language
     project(
         number: Int!
@@ -15988,6 +16293,7 @@ type Repository implements Node &
         last: Int
         orderBy: ReleaseOrder
   ): ReleaseConnection!
+    repositoryCopilotCodeReviewSettings: RepositoryCopilotCodeReviewSettings
     repositoryCustomPropertyValue(
         propertyName: String!
   ): RepositoryCustomPropertyValue
@@ -16146,6 +16452,24 @@ enum RepositoryContributionType @docsCategory(name: "repos") {
     PULL_REQUEST
     PULL_REQUEST_REVIEW
     REPOSITORY
+}
+type RepositoryCopilotCodeReviewEffort @docsCategory(name: "copilot") {
+    configured: CopilotCodeReviewEffortLevel
+    effective: CopilotCodeReviewEffortLevel!
+}
+enum RepositoryCopilotCodeReviewEffortSetting @docsCategory(name: "copilot") {
+    BALANCED
+    DYNAMIC
+    INHERIT
+    LITE
+    MAX
+}
+type RepositoryCopilotCodeReviewSettings @docsCategory(name: "copilot") {
+    availableReviewEfforts: [CopilotCodeReviewEffortLevel!]!
+    customInstructionsEnabled: Boolean!
+    mcpEnabled: Boolean!
+    reviewEffort: RepositoryCopilotCodeReviewEffort!
+    severityFilter: CopilotCodeReviewSeverityFilter!
 }
 type RepositoryCustomProperty implements Node @docsCategory(name: "repos") {
     allowedValues: [String!]
@@ -16405,8 +16729,11 @@ interface RepositoryOwner @docsCategory(name: "repos") {
 enum RepositoryPermission @docsCategory(name: "repos") {
     ADMIN
     MAINTAIN
+    MODERATE
     READ
     TRIAGE
+    TRIAGE_PLUS
+    @deprecated(reason: "TRIAGE_PLUS has been renamed to MODERATE. Use MODERATE instead. Removal on 2027-04-01 UTC.")
     WRITE
 }
 type RepositoryPlanFeatures @docsCategory(name: "repos") {
@@ -16475,6 +16802,8 @@ enum RepositoryRuleOrderField @docsCategory(name: "repos") {
 enum RepositoryRuleType {
     AUTHORIZATION
     BRANCH_NAME_PATTERN
+    CODE_COVERAGE
+    CODE_QUALITY
     CODE_SCANNING
     COMMITTER_EMAIL_PATTERN
     COMMIT_AUTHOR_EMAIL_PATTERN
@@ -16536,6 +16865,7 @@ type RepositoryRulesetBypassActor implements Node @docsCategory(name: "repos") {
     deployKey: Boolean!
     enterpriseOwner: Boolean!
     enterpriseRole: Boolean!
+    enterpriseRoleDatabaseId: BigInt
     id: ID!
     organizationAdmin: Boolean!
     repositoryRoleDatabaseId: Int
@@ -16562,7 +16892,8 @@ input RepositoryRulesetBypassActorInput @docsCategory(name: "repos") {
     bypassMode: RepositoryRulesetBypassActorBypassMode!
     deployKey: Boolean
     enterpriseOwner: Boolean
-    enterpriseRole: Boolean
+    enterpriseRole: Boolean @deprecated(reason: "Use enterpriseRoleDatabaseId.")
+    enterpriseRoleDatabaseId: BigInt
     organizationAdmin: Boolean
     repositoryRoleDatabaseId: Int
 }
@@ -16819,6 +17150,19 @@ type ReprioritizeSubIssuePayload {
     clientMutationId: String
     issue: Issue
 }
+input RequestCopilotCodeReviewInput {
+    clientMutationId: String
+    pullRequestId: ID! @possibleTypes(concreteTypes: ["PullRequest"])
+    reviewEffort: CopilotCodeReviewEffort
+}
+type RequestCopilotCodeReviewPayload {
+    actor: Actor
+    clientMutationId: String
+    failureReason: CopilotCodeReviewRequestReason
+    pullRequest: PullRequest
+    reviewRequest: ReviewRequest
+    success: Boolean
+}
 input RequestReviewsByLoginInput {
     botLogins: [String!]
     clientMutationId: String
@@ -16914,8 +17258,22 @@ type RerequestCheckSuitePayload {
     checkSuite: CheckSuite
     clientMutationId: String
 }
+input RerequestReviewsInput {
+    botIds: [ID!] @possibleTypes(concreteTypes: ["Bot"])
+    clientMutationId: String
+    pullRequestId: ID! @possibleTypes(concreteTypes: ["PullRequest"])
+    teamIds: [ID!] @possibleTypes(concreteTypes: ["EnterpriseTeam", "Team"], abstractType: "TeamReviewRequestable")
+    userIds: [ID!] @possibleTypes(concreteTypes: ["User"])
+}
+type RerequestReviewsPayload {
+    actor: Actor
+    clientMutationId: String
+    pullRequest: PullRequest
+    requestedReviewersEdge: UserEdge
+}
 input ResolveReviewThreadInput {
     clientMutationId: String
+    resolutionReason: PullRequestReviewThreadResolutionReason
     threadId: ID! @possibleTypes(concreteTypes: ["PullRequestReviewThread"])
 }
 type ResolveReviewThreadPayload {
@@ -17051,6 +17409,8 @@ enum RuleEnforcement @docsCategory(name: "repos") {
 }
 union RuleParameters =
   | BranchNamePatternParameters
+  | CodeCoverageParameters
+  | CodeQualityParameters
   | CodeScanningParameters
   | CommitAuthorEmailPatternParameters
   | CommitMessagePatternParameters
@@ -17069,6 +17429,8 @@ union RuleParameters =
   | WorkflowsParameters
 input RuleParametersInput {
     branchNamePattern: BranchNamePatternParametersInput
+    codeCoverage: CodeCoverageParametersInput
+    codeQuality: CodeQualityParametersInput
     codeScanning: CodeScanningParametersInput
     commitAuthorEmailPattern: CommitAuthorEmailPatternParametersInput
     commitMessagePattern: CommitMessagePatternParametersInput
@@ -17162,6 +17524,7 @@ enum SearchType @docsCategory(name: "search") {
 }
 type SecurityAdvisory implements Node @docsCategory(name: "security-advisories") {
     classification: SecurityAdvisoryClassification!
+    cveId: String
     cvss: CVSS!
     @deprecated(
       reason: "`cvss` will be removed. New `cvss_severities` field will now contain both `cvss_v3` and `cvss_v4` properties. Removal on 2025-10-01 UTC."
@@ -17177,14 +17540,18 @@ type SecurityAdvisory implements Node @docsCategory(name: "security-advisories")
     description: String!
     epss: EPSS
     ghsaId: String!
+    githubReviewedAt: DateTime
     id: ID!
     identifiers: [SecurityAdvisoryIdentifier!]!
     notificationsPermalink: URI
+    nvdPublishedAt: DateTime
     origin: String!
     permalink: URI
     publishedAt: DateTime!
     references: [SecurityAdvisoryReference!]!
+    repositoryAdvisoryUrl: URI
     severity: SecurityAdvisorySeverity!
+    sourceCodeLocation: URI
     summary: String!
     updatedAt: DateTime!
     vulnerabilities(
@@ -17314,6 +17681,16 @@ type SetIssueFieldValuePayload {
     clientMutationId: String
     issue: Issue
     issueFieldValues: [IssueFieldValue!]
+}
+input SetIssueStatusInput {
+    clientMutationId: String
+    duplicateIssueId: ID @possibleTypes(concreteTypes: ["Issue"])
+    issueId: ID! @possibleTypes(concreteTypes: ["Issue"])
+    statusId: ID! @possibleTypes(concreteTypes: ["PlanningStatus"])
+}
+type SetIssueStatusPayload {
+    clientMutationId: String
+    issue: Issue
 }
 input SetOrganizationInteractionLimitInput {
     clientMutationId: String
@@ -19143,8 +19520,6 @@ type UnlabeledEvent implements Node @docsCategory(name: "issues") {
     intent: IssueUpdateIntent
     label: Label!
     labelable: Labelable!
-    rationale: IssueEventRationale
-    @deprecated(reason: "Use `intent` instead. This field is being removed and now always returns null.")
 }
 input UnlinkProjectV2FromRepositoryInput {
     clientMutationId: String
@@ -19396,6 +19771,15 @@ type UpdateEnterpriseAllowPrivateRepositoryForkingSettingPayload {
     enterprise: Enterprise
     message: String
 }
+input UpdateEnterpriseCopilotCodeReviewPolicyInput {
+    clientMutationId: String
+    enterpriseId: ID! @possibleTypes(concreteTypes: ["Enterprise"])
+    policyState: EnterpriseCopilotCodeReviewPolicyState!
+}
+type UpdateEnterpriseCopilotCodeReviewPolicyPayload {
+    clientMutationId: String
+    policy: EnterpriseCopilotCodeReviewPolicy
+}
 input UpdateEnterpriseDefaultRepositoryPermissionSettingInput {
     clientMutationId: String
     enterpriseId: ID! @possibleTypes(concreteTypes: ["Enterprise"])
@@ -19533,16 +19917,6 @@ type UpdateEnterpriseProfilePayload {
     clientMutationId: String
     enterprise: Enterprise
 }
-input UpdateEnterpriseProofOfPresenceRequiredSettingInput {
-    clientMutationId: String
-    enterpriseId: ID! @possibleTypes(concreteTypes: ["Enterprise"])
-    settingValue: ProofOfPresenceRequirement!
-}
-type UpdateEnterpriseProofOfPresenceRequiredSettingPayload {
-    clientMutationId: String
-    enterprise: Enterprise
-    message: String
-}
 input UpdateEnterpriseRepositoryProjectsSettingInput {
     clientMutationId: String
     enterpriseId: ID! @possibleTypes(concreteTypes: ["Enterprise"])
@@ -19674,6 +20048,7 @@ input UpdateIssueInput {
     body: String
     clientMutationId: String
     id: ID! @possibleTypes(concreteTypes: ["Issue"])
+    issueFieldUpdates: [IssueFieldUpdateInput!]
     issueType: IssueTypeUpdateInput
     issueTypeId: ID
     labelIds: [ID!] @possibleTypes(concreteTypes: ["Label"])
@@ -19682,6 +20057,7 @@ input UpdateIssueInput {
     projectIds: [ID!]
     state: IssueState
     stateInput: IssueStateUpdateInput
+    statusId: ID @possibleTypes(concreteTypes: ["PlanningStatus"])
     title: String
 }
 input UpdateIssueIssueTypeInput {
@@ -19739,6 +20115,38 @@ type UpdateOrganizationAllowPrivateRepositoryForkingSettingPayload {
     clientMutationId: String
     message: String
     organization: Organization
+}
+input UpdateOrganizationCopilotCodeReviewPolicyInput {
+    clientMutationId: String
+    organizationId: ID! @possibleTypes(concreteTypes: ["Organization"])
+    state: OrganizationCopilotCodeReviewPolicyState!
+}
+type UpdateOrganizationCopilotCodeReviewPolicyPayload {
+    clientMutationId: String
+    conflict: OrganizationCopilotCodeReviewPolicyConflict
+    policy: OrganizationCopilotCodeReviewPolicy
+}
+input UpdateOrganizationCopilotCodeReviewRunnerConfigurationInput {
+    allowRepositoryCustomization: Boolean
+    clientMutationId: String
+    organizationId: ID! @possibleTypes(concreteTypes: ["Organization"])
+    runnerGroupName: String
+    runnerLabels: [String!]
+    runnerType: CopilotCodeReviewRunnerType!
+}
+type UpdateOrganizationCopilotCodeReviewRunnerConfigurationPayload {
+    clientMutationId: String
+    runnerConfiguration: OrganizationCopilotCodeReviewRunnerConfiguration
+}
+input UpdateOrganizationCopilotCodeReviewSettingsInput {
+    clientMutationId: String
+    defaultReviewEffort: OrganizationCopilotCodeReviewEffortSetting
+    organizationId: ID! @possibleTypes(concreteTypes: ["Organization"])
+}
+type UpdateOrganizationCopilotCodeReviewSettingsPayload {
+    clientMutationId: String
+    conflict: OrganizationCopilotCodeReviewSettingsConflict
+    settings: OrganizationCopilotCodeReviewSettings
 }
 input UpdateOrganizationWebCommitSignoffSettingInput {
     clientMutationId: String
@@ -19977,6 +20385,18 @@ input UpdateRefsInput {
 }
 type UpdateRefsPayload {
     clientMutationId: String
+}
+input UpdateRepositoryCopilotCodeReviewSettingsInput {
+    clientMutationId: String
+    customInstructionsEnabled: Boolean
+    mcpEnabled: Boolean
+    repositoryId: ID! @possibleTypes(concreteTypes: ["Repository"])
+    reviewEffort: RepositoryCopilotCodeReviewEffortSetting
+    severityFilter: CopilotCodeReviewSeverityFilter
+}
+type UpdateRepositoryCopilotCodeReviewSettingsPayload {
+    clientMutationId: String
+    settings: RepositoryCopilotCodeReviewSettings
 }
 input UpdateRepositoryCustomPropertyInput {
     allowedValues: [String!]
@@ -20228,6 +20648,20 @@ type User implements Actor &
         last: Int
         orderBy: IssueCommentOrder
   ): IssueCommentConnection!
+    issueFields(
+        after: String
+        before: String
+        first: Int
+        last: Int
+        orderBy: IssueFieldOrder = {field: CREATED_AT, direction: ASC}
+  ): IssueFieldsConnection
+    issueTypes(
+        after: String
+        before: String
+        first: Int
+        last: Int
+        orderBy: IssueTypeOrder = {field: CREATED_AT, direction: ASC}
+  ): IssueTypeConnection
     issues(
         after: String
         before: String
@@ -20286,6 +20720,13 @@ type User implements Actor &
         last: Int
         types: [PinnableItemType!]
   ): PinnableItemConnection!
+    pinnedIssueFields(
+        after: String
+        before: String
+        first: Int
+        last: Int
+        orderBy: PinnedIssueFieldOrder = {field: POSITION, direction: ASC}
+  ): IssueFieldsConnection
     pinnedItems(
         after: String
         before: String
@@ -20294,6 +20735,12 @@ type User implements Actor &
         types: [PinnableItemType!]
   ): PinnableItemConnection!
     pinnedItemsRemaining: Int!
+    planningStatuses(
+        after: String
+        before: String
+        first: Int
+        last: Int
+  ): PlanningStatusConnection
     project(
         number: Int!
   ): Project
